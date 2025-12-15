@@ -84,16 +84,20 @@ export default function App() {
         if (!player) return;
 
         const isVisible = idx === visibleIndex;
-        const isPreloadCandidate = idx === visibleIndex + 1 || idx === visibleIndex + 2;
+        const isPreloadCandidate1 = idx === visibleIndex + 1;
+        const isPreloadCandidate2 = idx === visibleIndex + 2;
+        const isPreloadCandidate3 = idx === visibleIndex + 3;
 
-        if (isVisible || isPreloadCandidate) {
+        if (isVisible || isPreloadCandidate1 || isPreloadCandidate2 || isPreloadCandidate3) {
           if (player.source?.uri && player.status === 'idle') {
+            console.log(`[iOS] Preloading video ${idx}`);
             player.preload();
           }
         } else {
-          // For players further than 2 positions away (and not visible)
-          if (Math.abs(idx - visibleIndex) > 2) {
+          // For players further than 3 positions away (and not visible)
+          if (Math.abs(idx - visibleIndex) > 3) {
             if (player.source?.uri) {
+              console.log(`[iOS] Cleaning source for video ${idx}`);
               player.replaceSourceAsync(null);
             }
           }
@@ -118,7 +122,8 @@ export default function App() {
     {
       viewabilityConfig: {
         id: 'video',
-        viewAreaCoveragePercentThreshold: 60,
+        viewAreaCoveragePercentThreshold: 50,
+        minimumViewTime: 100,
       },
       onViewableItemsChanged: onViewableItemsChanged,
     } satisfies ViewabilityConfigCallbackPairs[number],
@@ -138,6 +143,8 @@ export default function App() {
         snapToInterval={screenHeight}
         snapToAlignment="start"
         decelerationRate="fast"
+        pagingEnabled={true}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         maintainVisibleContentPosition={true}
