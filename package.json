@@ -1,28 +1,28 @@
 {
-  "name": "videoscrollexample",
-  "version": "1.0.0",
-  "main": "index.ts",
-  "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "postinstall": "patch-package"
-  },
-  "dependencies": {
-    "@expo/vector-icons": "^14.1.0",
-    "@legendapp/list": "^1.0.11",
-    "expo": "~52.0.46",
-    "expo-status-bar": "~2.0.1",
-    "react": "18.3.1",
-    "react-native": "0.76.9",
-    "react-native-nitro-modules": "^0.25.2",
-    "react-native-video": "npm:@thewidlarzgroup/react-native-video-v7@7.0.0-dev.10"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@types/react": "~18.3.12",
-    "patch-package": "^8.0.0",
-    "typescript": "^5.3.3"
-  },
-  "private": true
+    "name": "videoscrollexample",
+    "version": "1.0.0",
+    "main": "index.ts",
+    "scripts": {
+        "start": "expo start",
+        "android": "expo run:android",
+        "ios": "expo run:ios",
+        "postinstall": "patch-package"
+    },
+    "dependencies": {
+        "@expo/vector-icons": "^14.1.0",
+        "@legendapp/list": "^1.0.11",
+        "expo": "~52.0.46",
+        "expo-status-bar": "~2.0.1",
+        "react": "18.3.1",
+        "react-native": "0.76.9",
+        "react-native-nitro-modules": "^0.31.0",
+        "react-native-video": "7.0.0-beta.1"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.25.2",
+        "@types/react": "~18.3.12",
+        "patch-package": "^8.0.0",
+        "typescript": "^5.3.3"
+    },
+    "private": true
 }
