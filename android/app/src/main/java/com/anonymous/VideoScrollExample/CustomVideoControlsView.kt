@@ -27,6 +27,9 @@ class CustomVideoControlsView @JvmOverloads constructor(
   init {
     Log.d("CustomVideoControls", "CustomVideoControlsView created")
     setupPlayPauseButton()
+    // Don't intercept touches - let them pass through to parent
+    isClickable = false
+    isFocusable = false
     post {
       Log.d("CustomVideoControls", "Starting to find player from view hierarchy")
       findPlayerFromViewHierarchy()
@@ -102,19 +105,13 @@ class CustomVideoControlsView @JvmOverloads constructor(
         gravity = Gravity.CENTER
       }
       scaleType = ImageView.ScaleType.FIT_CENTER
-      isClickable = true
-      isFocusable = true
-      isEnabled = true
-      setOnClickListener {
-        Log.d("CustomVideoControls", "Button clicked!")
-        togglePlayPause()
-      }
+      // Button is display-only, no click handler - Pressable handles play/pause
+      isClickable = false
+      isFocusable = false
+      isEnabled = false
       setImageResource(androidx.media3.ui.R.drawable.exo_icon_play)
       visibility = View.VISIBLE
     }
-    
-    isClickable = false
-    isFocusable = false
     
     addView(backgroundOverlay)
     addView(playPauseButton)
@@ -181,6 +178,7 @@ class CustomVideoControlsView @JvmOverloads constructor(
     }
     playPauseButton?.setImageResource(iconRes)
     
+    // Hide button when playing, show when paused (as before)
     val visibility = if (isPlayingState) {
       View.GONE
     } else {
@@ -192,34 +190,6 @@ class CustomVideoControlsView @JvmOverloads constructor(
     Log.d("CustomVideoControls", "updateButtonVisibility: isPlaying=$isPlayingState, visibility=$visibility, hasPlayer=true")
   }
   
-  private fun togglePlayPause() {
-    val currentPlayer = player
-    if (currentPlayer == null) {
-      Log.e("CustomVideoControls", "Cannot toggle: player is null")
-      return
-    }
-    
-    try {
-      val wasPlaying = currentPlayer.isPlaying
-      Log.d("CustomVideoControls", "togglePlayPause: wasPlaying=$wasPlaying")
-      
-      if (wasPlaying) {
-        currentPlayer.pause()
-        isPlayingState = false
-        Log.d("CustomVideoControls", "Paused video")
-      } else {
-        currentPlayer.play()
-        isPlayingState = true
-        Log.d("CustomVideoControls", "Playing video")
-      }
-      
-      post {
-        updateButtonVisibility()
-      }
-    } catch (e: Exception) {
-      Log.e("CustomVideoControls", "Error toggling play/pause: ${e.message}", e)
-    }
-  }
   
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()

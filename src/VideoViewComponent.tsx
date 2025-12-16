@@ -4,7 +4,7 @@ import {
     useViewability,
     ViewToken,
 } from "@legendapp/list";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -26,14 +26,39 @@ const VideoViewComponent = ({
         player.status === "idle" || player.status === "loading"
     );
     const [isError, setIsError] = useRecyclingState(player.status === "error");
-    const [nitroId, setNitroId] = useState<number | null>(null);
+    const isViewableRef = useRef(false);
+    const userPausedRef = useRef(false); // Track if user manually paused
 
-    // Ensure video is preloaded when component mounts
+    // Preload immediately on mount and retry if needed
     useEffect(() => {
-        if (player.source?.uri && player.status === "idle") {
-            console.log(index, "[MOUNT] Preloading video on mount");
-            player.preload();
-        }
+        const preloadVideo = () => {
+            if (player.source?.uri) {
+                if (player.status === "idle") {
+                    player.preload();
+                } else if (player.status === "error") {
+                    // Retry on error
+                    setTimeout(() => {
+                        if (
+                            player.status === "idle" ||
+                            player.status === "error"
+                        ) {
+                            player.preload();
+                        }
+                    }, 500);
+                }
+            }
+        };
+
+        preloadVideo();
+
+        // Retry preload if still idle after a moment
+        const retryTimer = setTimeout(() => {
+            if (player.status === "idle" && player.source?.uri) {
+                player.preload();
+            }
+        }, 200);
+
+        return () => clearTimeout(retryTimer);
     }, [player]);
 
     useEvent(player, "onLoad", (_) => {
@@ -43,22 +68,33 @@ const VideoViewComponent = ({
     });
 
     useEvent(player, "onStatusChange", (status) => {
-        console.log(index, "[PLAYER STATUS]", status);
-
         if (player.status === "error") {
             setIsError(true);
-        }
-
-        if (player.status === "readyToPlay") {
+            setIsLoading(false);
+        } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-        }
-
-        if (player.status === "idle") {
+            // Auto-play if viewable and user hasn't manually paused
+            if (
+                isViewableRef.current &&
+                !player.isPlaying &&
+                !userPausedRef.current
+            ) {
+                // Small delay to ensure everything is ready
+                setTimeout(() => {
+                    if (
+                        isViewableRef.current &&
+                        !player.isPlaying &&
+                        !userPausedRef.current
+                    ) {
+                        player.play();
+                    }
+                }, 50);
+            }
+        } else if (player.status === "idle") {
             setIsLoading(true);
-        }
-
-        if (player.status === "loading") {
+            userPausedRef.current = false; // Reset on new load
+        } else if (player.status === "loading") {
             setIsLoading(true);
             setIsError(false);
         }
@@ -66,67 +102,55 @@ const VideoViewComponent = ({
 
     useEvent(player, "onError", (error) => {
         console.log(index, "[ERROR]", error);
-
         setIsError(true);
         setIsLoading(false);
     });
 
+    // Single source of truth for viewability
     useViewability((viewToken: ViewToken) => {
-        if (viewToken.isViewable) {
-            // If video is ready to play, start playing immediately
-            if (player.status === "readyToPlay") {
-                if (!player.isPlaying) {
-                    console.log(
-                        index,
-                        "[VIEWABILITY] Playing video - status:",
-                        player.status
-                    );
-                    player.play();
-                }
-            } else if (player.status === "loading") {
-                // Video is loading, wait for it to be ready
-                console.log(
-                    index,
-                    "[VIEWABILITY] Video is loading - status:",
-                    player.status
-                );
-            } else if (player.status === "idle") {
-                // Video hasn't started loading yet, trigger preload
-                console.log(
-                    index,
-                    "[VIEWABILITY] Video is idle, triggering preload"
-                );
-                if (player.source?.uri) {
-                    player.preload();
-                }
+        const isNowViewable = viewToken.isViewable;
+        isViewableRef.current = isNowViewable;
+
+        if (isNowViewable) {
+            // Preload if needed
+            if (player.status === "idle" && player.source?.uri) {
+                player.preload();
+            }
+            // Auto-play if ready and user hasn't manually paused
+            if (
+                player.status === "readyToPlay" &&
+                !player.isPlaying &&
+                !userPausedRef.current
+            ) {
+                setTimeout(() => {
+                    if (
+                        isViewableRef.current &&
+                        player.status === "readyToPlay" &&
+                        !player.isPlaying &&
+                        !userPausedRef.current
+                    ) {
+                        player.play();
+                    }
+                }, 100);
             }
         } else {
-            // When not viewable, pause if playing
-            if (player.status !== "idle" && player.isPlaying) {
-                console.log(
-                    index,
-                    "[VIEWABILITY] Pausing video - not viewable"
-                );
+            // IMMEDIATELY pause when not viewable
+            if (player.isPlaying) {
                 player.pause();
             }
+            // Reset user pause flag when not viewable
+            userPausedRef.current = false;
         }
     }, "video");
 
     return (
-        <Pressable
+        <View
             style={{
                 width: screenWidth,
                 height: screenHeight,
                 backgroundColor: "black",
                 justifyContent: "center",
                 alignItems: "center",
-            }}
-            onPress={() => {
-                if (player.isPlaying) {
-                    player.pause();
-                } else {
-                    player.play();
-                }
             }}
         >
             {isLoading ? (
@@ -136,50 +160,79 @@ const VideoViewComponent = ({
                         height: screenHeight,
                         justifyContent: "center",
                         alignItems: "center",
-                        backgroundColor: "transparent",
+                        backgroundColor: "black",
                         position: "absolute",
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 0,
+                        zIndex: 10,
                     }}
                 >
                     <ActivityIndicator size="large" color="#fff" />
                 </View>
             ) : null}
             {isError ? (
-                <Text style={{ color: "#fff" }}>
-                    Error: Something went wrong
-                </Text>
-            ) : null}
-            {!isError ? (
                 <View
                     style={{
                         width: screenWidth,
                         height: screenHeight,
-                        position: "relative",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor: "black",
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 10,
                     }}
                 >
-                    <VideoView
-                        player={player}
-                        style={{ width: screenWidth, height: screenHeight }}
-                        controls={false}
-                    />
-                    <CustomVideoControls
-                        nitroId={-1}
-                        style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            pointerEvents: "box-none",
-                        }}
-                    />
+                    <Text style={{ color: "#fff" }}>
+                        Error: Something went wrong
+                    </Text>
                 </View>
             ) : null}
+            <Pressable
+                style={{
+                    width: screenWidth,
+                    height: screenHeight,
+                    position: "relative",
+                }}
+                onPress={() => {
+                    console.log(
+                        "Pressable pressed, isPlaying:",
+                        player.isPlaying
+                    );
+                    if (player.isPlaying) {
+                        player.pause();
+                        userPausedRef.current = true;
+                    } else {
+                        player.play();
+                        userPausedRef.current = false;
+                    }
+                }}
+            >
+                <VideoView
+                    player={player}
+                    style={{ width: screenWidth, height: screenHeight }}
+                    controls={false}
+                    pointerEvents="none"
+                />
+                <CustomVideoControls
+                    nitroId={-1}
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        pointerEvents: "box-none",
+                    }}
+                />
+            </Pressable>
             <VideoOverlay />
-        </Pressable>
+        </View>
     );
 };
 
