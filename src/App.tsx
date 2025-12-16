@@ -1,13 +1,11 @@
-import { LegendList, ViewabilityConfigCallbackPairs } from "@legendapp/list";
 import { StatusBar } from "expo-status-bar";
 import React, {
     useCallback,
     useEffect,
-    useMemo,
     useRef,
     useState,
 } from "react";
-import { Dimensions, Platform, View } from "react-native";
+import { Dimensions, FlatList, Platform, View, ViewabilityConfig } from "react-native";
 import { VideoPlayer } from "react-native-video";
 import BottomTabBar from "./BottomTabBar";
 import { styles } from "./styles";
@@ -15,7 +13,6 @@ import { SOURCES, createListPlayer } from "./utils";
 import VideoViewComponent from "./VideoViewComponent";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
-const MAX_ANDROID_ACTIVE_PLAYERS = 2;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -30,24 +27,28 @@ export default function App() {
         setPlayers(initialPlayers);
         playersRef.current = initialPlayers;
 
-        // Preload ALL videos immediately - no delay
-        initialPlayers.forEach((player, idx) => {
-            if (player.source?.uri && player.status === "idle") {
-                // Preload immediately, no staggering
-                player.preload();
+        // Preload only first video
+        if (initialPlayers[0]?.source?.uri && initialPlayers[0].status === "idle") {
+            try {
+                initialPlayers[0].preload();
+            } catch (e) {
+                console.error("[App] Initial preload error:", e);
             }
-        });
+        }
 
         return () => {
             initialPlayers.forEach((player) => {
-                player.replaceSourceAsync(null);
+                try {
+                    player.replaceSourceAsync(null);
+                } catch (e) {
+                    // Ignore
+                }
             });
             setPlayers([]);
             playersRef.current = [];
         };
     }, []);
 
-    // Keep ref in sync
     useEffect(() => {
         playersRef.current = players;
     }, [players]);
@@ -58,75 +59,41 @@ export default function App() {
 
     const fetchMoreVideos = useCallback(() => {
         setPlayers((prevPlayers) => {
-            const newSource =
-                SOURCES[Math.floor(Math.random() * SOURCES.length)];
+            const nextIndex = prevPlayers.length % SOURCES.length;
+            const newSource = SOURCES[nextIndex];
             const newPlayer = createListPlayer(newSource);
-            const updated = [...prevPlayers, newPlayer];
-
-            // Preload new video immediately
-            if (newPlayer.source?.uri && newPlayer.status === "idle") {
-                newPlayer.preload();
-            }
-
-            return updated;
+            return [...prevPlayers, newPlayer];
         });
     }, []);
 
-    // Manage player lifecycle
+    // Simple lifecycle - preload visible + next 2, cleanup far away
     useEffect(() => {
         if (!players.length) return;
 
-        if (Platform.OS === "android") {
-            let androidActivePlayerCount = 0;
-            players.forEach((player, idx) => {
-                if (!player) return;
+        players.forEach((player, idx) => {
+            if (!player) return;
 
-                const isVisible = idx === visibleIndex;
-                const distance = Math.abs(idx - visibleIndex);
-                const shouldPreload = distance <= 3;
+            const distance = Math.abs(idx - visibleIndex);
+            const isVisible = idx === visibleIndex;
 
-                if (
-                    isVisible ||
-                    (shouldPreload &&
-                        androidActivePlayerCount < MAX_ANDROID_ACTIVE_PLAYERS)
-                ) {
-                    if (player.source?.uri && player.status === "idle") {
-                        player.preload();
-                    }
-                    if (shouldPreload) {
-                        androidActivePlayerCount++;
-                    }
-                } else if (distance > 7) {
-                    // Only clean up very far away videos (increased from 5 to 7)
-                    if (
-                        player.status === "readyToPlay" ||
-                        player.status === "error"
-                    ) {
-                        player.replaceSourceAsync(null);
-                    }
+            // Preload visible + next 2
+            if (distance <= 2 && player.source?.uri && player.status === "idle") {
+                try {
+                    player.preload();
+                } catch (e) {
+                    // Ignore
                 }
-            });
-        } else {
-            // iOS - preload visible + next 3
-            players.forEach((player, idx) => {
-                if (!player) return;
+            }
 
-                const distance = Math.abs(idx - visibleIndex);
-                if (distance <= 3) {
-                    if (player.source?.uri && player.status === "idle") {
-                        player.preload();
-                    }
-                } else if (distance > 7) {
-                    // Only clean up very far away videos (increased from 5 to 7)
-                    if (
-                        player.status === "readyToPlay" ||
-                        player.status === "error"
-                    ) {
-                        player.replaceSourceAsync(null);
-                    }
+            // Clean up far away
+            if (distance > 5 && (player.status === "readyToPlay" || player.status === "error")) {
+                try {
+                    player.replaceSourceAsync(null);
+                } catch (e) {
+                    // Ignore
                 }
-            });
-        }
+            }
+        });
     }, [visibleIndex, players]);
 
     const onViewableItemsChanged = useCallback(
@@ -140,22 +107,33 @@ export default function App() {
                 const newVisibleIndex = viewableItems[0].index;
                 const oldVisibleIndex = visibleIndexRef.current;
 
-                // CRITICAL: Pause ALL videos except the new visible one
-                // Use ref to get latest players array
+                if (newVisibleIndex === oldVisibleIndex) {
+                    return;
+                }
+
                 const currentPlayers = playersRef.current;
+
+                // Pause all except visible
                 currentPlayers.forEach((player, idx) => {
-                    if (idx !== newVisibleIndex && player) {
-                        // Force pause all non-visible videos
+                    if (!player) return;
+
+                    if (idx !== newVisibleIndex) {
                         try {
                             if (player.isPlaying) {
                                 player.pause();
                             }
+                            if (player.muted !== true) {
+                                player.muted = true;
+                            }
                         } catch (e) {
-                            // Ignore errors
+                            // Ignore
                         }
-                    } else if (idx === newVisibleIndex && player) {
-                        // Preload if not ready, play if ready
+                    } else {
+                        // Visible video
                         try {
+                            if (player.muted === true) {
+                                player.muted = false;
+                            }
                             if (
                                 player.status === "idle" &&
                                 player.source?.uri
@@ -165,11 +143,10 @@ export default function App() {
                                 player.status === "readyToPlay" &&
                                 !player.isPlaying
                             ) {
-                                // Play immediately when scrolling to visible video
                                 player.play();
                             }
                         } catch (e) {
-                            // Ignore errors
+                            // Ignore
                         }
                     }
                 });
@@ -177,7 +154,7 @@ export default function App() {
                 setVisibleIndex(newVisibleIndex);
 
                 // Fetch more if needed
-                if (currentPlayers.length - newVisibleIndex <= 3) {
+                if (currentPlayers.length - newVisibleIndex <= 2) {
                     fetchMoreVideos();
                 }
             }
@@ -185,27 +162,25 @@ export default function App() {
         [fetchMoreVideos]
     );
 
-    const viewabilityConfigCallbackPairs = useMemo(
-        () => [
-            {
-                viewabilityConfig: {
-                    id: "video",
-                    viewAreaCoveragePercentThreshold: 50,
-                    minimumViewTime: 0, // Changed to 0 for immediate detection
-                },
-                onViewableItemsChanged: onViewableItemsChanged,
-            } satisfies ViewabilityConfigCallbackPairs[number],
-        ],
-        [onViewableItemsChanged]
-    );
+    const viewabilityConfig = useRef<ViewabilityConfig>({
+        viewAreaCoveragePercentThreshold: 50, // Lower threshold for faster detection
+        minimumViewTime: 0, // Immediate detection
+        waitForInteraction: false,
+    }).current;
 
     return (
         <View style={styles.container}>
-            <LegendList
+            <FlatList
                 data={players}
-                renderItem={(item) => <VideoViewComponent {...item} />}
-                keyExtractor={(item, idx) => `${item.source.uri}-${idx}`}
-                estimatedItemSize={screenHeight}
+                renderItem={({ item, index }) => (
+                    <VideoViewComponent item={item} index={index} />
+                )}
+                keyExtractor={(item, idx) => `${item.source?.uri}-${idx}`}
+                getItemLayout={(_, index) => ({
+                    length: screenHeight,
+                    offset: screenHeight * index,
+                    index,
+                })}
                 style={{ width: screenWidth, height: screenHeight }}
                 contentContainerStyle={{ flexGrow: 1 }}
                 horizontal={false}
@@ -214,8 +189,12 @@ export default function App() {
                 decelerationRate="fast"
                 pagingEnabled={true}
                 showsVerticalScrollIndicator={false}
-                viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-                maintainVisibleContentPosition={true}
+                viewabilityConfig={viewabilityConfig}
+                onViewableItemsChanged={onViewableItemsChanged}
+                removeClippedSubviews={Platform.OS === "android"}
+                maxToRenderPerBatch={3}
+                windowSize={5}
+                initialNumToRender={2}
             />
             <StatusBar style="light" />
             <BottomTabBar />

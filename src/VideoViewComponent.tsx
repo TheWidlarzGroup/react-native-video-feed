@@ -1,65 +1,53 @@
-import {
-    LegendListRenderItemProps,
-    useRecyclingState,
-    useViewability,
-    ViewToken,
-} from "@legendapp/list";
-import React, { useEffect, useRef } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
     Pressable,
     Text,
+    TouchableOpacity,
     View,
 } from "react-native";
 import { useEvent, VideoPlayer, VideoView } from "react-native-video";
 import VideoOverlay from "./VideoOverlay";
-import CustomVideoControls from "./CustomVideoControls";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
+
+interface VideoViewComponentProps {
+    item: VideoPlayer;
+    index: number;
+}
 
 const VideoViewComponent = ({
     item: player,
     index,
-}: LegendListRenderItemProps<VideoPlayer>) => {
-    const [isLoading, setIsLoading] = useRecyclingState(
+}: VideoViewComponentProps) => {
+    const [isLoading, setIsLoading] = useState(
         player.status === "idle" || player.status === "loading"
     );
-    const [isError, setIsError] = useRecyclingState(player.status === "error");
-    const isViewableRef = useRef(false);
-    const userPausedRef = useRef(false); // Track if user manually paused
+    const [isError, setIsError] = useState(player.status === "error");
+    const [isPlaying, setIsPlaying] = useState(player.isPlaying);
+    const userPausedRef = useRef(false);
 
-    // Preload immediately on mount and retry if needed
+    // Sync isPlaying state
     useEffect(() => {
-        const preloadVideo = () => {
-            if (player.source?.uri) {
-                if (player.status === "idle") {
-                    player.preload();
-                } else if (player.status === "error") {
-                    // Retry on error
-                    setTimeout(() => {
-                        if (
-                            player.status === "idle" ||
-                            player.status === "error"
-                        ) {
-                            player.preload();
-                        }
-                    }, 500);
-                }
-            }
-        };
-
-        preloadVideo();
-
-        // Retry preload if still idle after a moment
-        const retryTimer = setTimeout(() => {
-            if (player.status === "idle" && player.source?.uri) {
-                player.preload();
-            }
-        }, 200);
-
-        return () => clearTimeout(retryTimer);
+        setIsPlaying(player.isPlaying);
+        const interval = setInterval(() => {
+            setIsPlaying(player.isPlaying);
+        }, 100);
+        return () => clearInterval(interval);
     }, [player]);
+
+    // Simple preload on mount
+    useEffect(() => {
+        if (player.status === "idle" && player.source?.uri) {
+            try {
+                player.preload();
+            } catch (e) {
+                console.error(`[Video ${index}] Preload error:`, e);
+            }
+        }
+    }, [player, index]);
 
     useEvent(player, "onLoad", (_) => {
         setIsLoading(false);
@@ -68,32 +56,22 @@ const VideoViewComponent = ({
     });
 
     useEvent(player, "onStatusChange", (status) => {
+        setIsPlaying(player.isPlaying);
         if (player.status === "error") {
             setIsError(true);
             setIsLoading(false);
         } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-            // Auto-play if viewable and user hasn't manually paused
-            if (
-                isViewableRef.current &&
-                !player.isPlaying &&
-                !userPausedRef.current
-            ) {
-                // Small delay to ensure everything is ready
-                setTimeout(() => {
-                    if (
-                        isViewableRef.current &&
-                        !player.isPlaying &&
-                        !userPausedRef.current
-                    ) {
-                        player.play();
-                    }
-                }, 50);
+            if (player.muted === true) {
+                try {
+                    player.muted = false;
+                } catch (e) {
+                    // Ignore
+                }
             }
         } else if (player.status === "idle") {
             setIsLoading(true);
-            userPausedRef.current = false; // Reset on new load
         } else if (player.status === "loading") {
             setIsLoading(true);
             setIsError(false);
@@ -101,47 +79,9 @@ const VideoViewComponent = ({
     });
 
     useEvent(player, "onError", (error) => {
-        console.log(index, "[ERROR]", error);
         setIsError(true);
         setIsLoading(false);
     });
-
-    // Single source of truth for viewability
-    useViewability((viewToken: ViewToken) => {
-        const isNowViewable = viewToken.isViewable;
-        isViewableRef.current = isNowViewable;
-
-        if (isNowViewable) {
-            // Preload if needed
-            if (player.status === "idle" && player.source?.uri) {
-                player.preload();
-            }
-            // Auto-play if ready and user hasn't manually paused
-            if (
-                player.status === "readyToPlay" &&
-                !player.isPlaying &&
-                !userPausedRef.current
-            ) {
-                setTimeout(() => {
-                    if (
-                        isViewableRef.current &&
-                        player.status === "readyToPlay" &&
-                        !player.isPlaying &&
-                        !userPausedRef.current
-                    ) {
-                        player.play();
-                    }
-                }, 100);
-            }
-        } else {
-            // IMMEDIATELY pause when not viewable
-            if (player.isPlaying) {
-                player.pause();
-            }
-            // Reset user pause flag when not viewable
-            userPausedRef.current = false;
-        }
-    }, "video");
 
     return (
         <View
@@ -188,50 +128,71 @@ const VideoViewComponent = ({
                         zIndex: 10,
                     }}
                 >
-                    <Text style={{ color: "#fff" }}>
-                        Error: Something went wrong
-                    </Text>
+                    <Text style={{ color: "#fff" }}>Error loading video</Text>
                 </View>
             ) : null}
-            <Pressable
-                style={{
-                    width: screenWidth,
-                    height: screenHeight,
-                    position: "relative",
-                }}
-                onPress={() => {
-                    console.log(
-                        "Pressable pressed, isPlaying:",
-                        player.isPlaying
-                    );
-                    if (player.isPlaying) {
-                        player.pause();
-                        userPausedRef.current = true;
-                    } else {
-                        player.play();
-                        userPausedRef.current = false;
-                    }
-                }}
-            >
-                <VideoView
-                    player={player}
-                    style={{ width: screenWidth, height: screenHeight }}
-                    controls={false}
-                    pointerEvents="none"
-                />
-                <CustomVideoControls
-                    nitroId={-1}
+            <VideoView
+                player={player}
+                style={{ width: screenWidth, height: screenHeight }}
+                controls={false}
+                pointerEvents="none"
+            />
+            {!isPlaying &&
+            !isLoading &&
+            !isError &&
+            player.status === "readyToPlay" ? (
+                <TouchableOpacity
                     style={{
                         position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        pointerEvents: "box-none",
+                        top: "50%",
+                        left: "50%",
+                        marginTop: -40,
+                        marginLeft: -40,
+                        width: 80,
+                        height: 80,
+                        borderRadius: 40,
+                        backgroundColor: "rgba(0, 0, 0, 0.6)",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        zIndex: 20,
                     }}
-                />
-            </Pressable>
+                    onPress={() => {
+                        try {
+                            player.play();
+                            userPausedRef.current = false;
+                        } catch (e) {
+                            console.error(`[Video ${index}] Play error:`, e);
+                        }
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="play" size={50} color="#fff" />
+                </TouchableOpacity>
+            ) : null}
             <VideoOverlay />
+            <Pressable
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 15,
+                }}
+                onPress={() => {
+                    try {
+                        if (player.isPlaying) {
+                            player.pause();
+                            userPausedRef.current = true;
+                        } else {
+                            player.play();
+                            userPausedRef.current = false;
+                        }
+                    } catch (e) {
+                        console.error(`[Video ${index}] Play/pause error:`, e);
+                    }
+                }}
+            />
         </View>
     );
 };

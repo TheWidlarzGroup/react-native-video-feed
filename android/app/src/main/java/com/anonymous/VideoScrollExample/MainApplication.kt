@@ -24,7 +24,6 @@ class MainApplication : Application(), ReactApplication {
           override fun getPackages(): List<ReactPackage> {
             val packages = PackageList(this).packages.toMutableList()
             // Packages that cannot be autolinked yet can be added manually here, for example:
-            packages.add(CustomVideoControlsPackage())
             return packages
           }
 
