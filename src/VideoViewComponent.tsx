@@ -4,7 +4,7 @@ import {
     useViewability,
     ViewToken,
 } from "@legendapp/list";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -27,6 +27,14 @@ const VideoViewComponent = ({
     );
     const [isError, setIsError] = useRecyclingState(player.status === "error");
     const [nitroId, setNitroId] = useState<number | null>(null);
+
+    // Ensure video is preloaded when component mounts
+    useEffect(() => {
+        if (player.source?.uri && player.status === "idle") {
+            console.log(index, "[MOUNT] Preloading video on mount");
+            player.preload();
+        }
+    }, []);
 
     useEvent(player, "onLoad", (_) => {
         setIsLoading(false);
@@ -65,11 +73,8 @@ const VideoViewComponent = ({
 
     useViewability((viewToken: ViewToken) => {
         if (viewToken.isViewable) {
-            if (
-                player.status !== "idle" &&
-                player.status !== "loading" &&
-                player.status !== "error"
-            ) {
+            // If video is ready to play, start playing
+            if (player.status === "readyToPlay") {
                 if (!player.isPlaying) {
                     console.log(
                         index,
@@ -78,10 +83,26 @@ const VideoViewComponent = ({
                     );
                     player.play();
                 }
-            } else {
+            } else if (player.status === "loading") {
+                // Video is loading, wait for it to be ready
                 console.log(
                     index,
-                    "[VIEWABILITY] Waiting for video to load - status:",
+                    "[VIEWABILITY] Video is loading, waiting for readyToPlay - status:",
+                    player.status
+                );
+            } else if (player.status === "idle") {
+                // Video hasn't started loading yet, trigger preload
+                console.log(
+                    index,
+                    "[VIEWABILITY] Video is idle, triggering preload"
+                );
+                if (player.source?.uri) {
+                    player.preload();
+                }
+            } else if (player.status === "error") {
+                console.log(
+                    index,
+                    "[VIEWABILITY] Video has error, cannot play - status:",
                     player.status
                 );
             }
