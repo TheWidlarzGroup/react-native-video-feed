@@ -52,7 +52,6 @@ const VideoViewComponent = ({
         if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-            // Video is ready - viewability hook will handle auto-play when visible
         }
 
         if (player.status === "idle") {
@@ -79,34 +78,27 @@ const VideoViewComponent = ({
                 if (!player.isPlaying) {
                     console.log(
                         index,
-                        "[VIEWABILITY] Playing video immediately - status:",
+                        "[VIEWABILITY] Playing video - status:",
                         player.status
                     );
                     player.play();
                 }
             } else if (player.status === "loading") {
                 // Video is loading, wait for it to be ready
-                // When it becomes readyToPlay, onStatusChange + viewability will trigger play
                 console.log(
                     index,
-                    "[VIEWABILITY] Video is loading, waiting for readyToPlay - status:",
+                    "[VIEWABILITY] Video is loading - status:",
                     player.status
                 );
             } else if (player.status === "idle") {
-                // Video hasn't started loading yet, trigger preload immediately
+                // Video hasn't started loading yet, trigger preload
                 console.log(
                     index,
-                    "[VIEWABILITY] Video is idle, triggering preload immediately"
+                    "[VIEWABILITY] Video is idle, triggering preload"
                 );
                 if (player.source?.uri) {
                     player.preload();
                 }
-            } else if (player.status === "error") {
-                console.log(
-                    index,
-                    "[VIEWABILITY] Video has error, cannot play - status:",
-                    player.status
-                );
             }
         } else {
             // When not viewable, pause if playing
@@ -118,15 +110,6 @@ const VideoViewComponent = ({
                 player.pause();
             }
         }
-
-        console.log(
-            index,
-            "[VIEWABILITY]: ",
-            viewToken.isViewable,
-            player.status,
-            "isPlaying:",
-            player.isPlaying
-        );
     }, "video");
 
     return (
