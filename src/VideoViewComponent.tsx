@@ -34,7 +34,7 @@ const VideoViewComponent = ({
             console.log(index, "[MOUNT] Preloading video on mount");
             player.preload();
         }
-    }, []);
+    }, [player]);
 
     useEvent(player, "onLoad", (_) => {
         setIsLoading(false);
@@ -52,6 +52,7 @@ const VideoViewComponent = ({
         if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
+            // Video is ready - viewability hook will handle auto-play when visible
         }
 
         if (player.status === "idle") {
@@ -73,28 +74,29 @@ const VideoViewComponent = ({
 
     useViewability((viewToken: ViewToken) => {
         if (viewToken.isViewable) {
-            // If video is ready to play, start playing
+            // If video is ready to play, start playing immediately
             if (player.status === "readyToPlay") {
                 if (!player.isPlaying) {
                     console.log(
                         index,
-                        "[VIEWABILITY] Playing video - status:",
+                        "[VIEWABILITY] Playing video immediately - status:",
                         player.status
                     );
                     player.play();
                 }
             } else if (player.status === "loading") {
                 // Video is loading, wait for it to be ready
+                // When it becomes readyToPlay, onStatusChange + viewability will trigger play
                 console.log(
                     index,
                     "[VIEWABILITY] Video is loading, waiting for readyToPlay - status:",
                     player.status
                 );
             } else if (player.status === "idle") {
-                // Video hasn't started loading yet, trigger preload
+                // Video hasn't started loading yet, trigger preload immediately
                 console.log(
                     index,
-                    "[VIEWABILITY] Video is idle, triggering preload"
+                    "[VIEWABILITY] Video is idle, triggering preload immediately"
                 );
                 if (player.source?.uri) {
                     player.preload();
@@ -107,6 +109,7 @@ const VideoViewComponent = ({
                 );
             }
         } else {
+            // When not viewable, pause if playing
             if (player.status !== "idle" && player.isPlaying) {
                 console.log(
                     index,

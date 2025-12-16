@@ -21,10 +21,18 @@ export default function App() {
         );
         setPlayers(initialPlayers);
 
-        // Preload the first video immediately
+        // Preload the first 2 videos immediately for smooth start
         if (initialPlayers.length > 0 && initialPlayers[0].source?.uri) {
             console.log("[INIT] Preloading first video");
             initialPlayers[0].preload();
+        }
+        if (initialPlayers.length > 1 && initialPlayers[1].source?.uri) {
+            console.log("[INIT] Preloading second video");
+            setTimeout(() => {
+                if (initialPlayers[1].status === "idle") {
+                    initialPlayers[1].preload();
+                }
+            }, 200);
         }
 
         return () => {
@@ -59,7 +67,8 @@ export default function App() {
                 }
 
                 const isVisible = idx === visibleIndex;
-                const isPreloadCandidate = idx === visibleIndex + 1;
+                const isPreloadCandidate1 = idx === visibleIndex + 1;
+                const isPreloadCandidate2 = idx === visibleIndex + 2;
                 const idxString =
                     idx.toString() + (visibleIndex === idx ? " (visible)" : "");
 
@@ -67,7 +76,7 @@ export default function App() {
                 if (isVisible) {
                     shouldBeActive = true;
                 } else if (
-                    isPreloadCandidate &&
+                    (isPreloadCandidate1 || isPreloadCandidate2) &&
                     androidActivePlayerCount < MAX_ANDROID_ACTIVE_PLAYERS
                 ) {
                     shouldBeActive = true;
@@ -81,12 +90,20 @@ export default function App() {
                             player.preload();
                         } else if (
                             isVisible &&
-                            (player.status === "loading" ||
-                                player.status === "readyToPlay")
+                            player.status === "readyToPlay" &&
+                            !player.isPlaying
                         ) {
+                            // If visible and ready, ensure it's playing
                             console.log(
                                 idxString,
-                                "visible video is loading/ready - status:",
+                                "visible video is ready, ensuring play - status:",
+                                player.status
+                            );
+                            player.play();
+                        } else if (isVisible && player.status === "loading") {
+                            console.log(
+                                idxString,
+                                "visible video is loading - status:",
                                 player.status
                             );
                         } else {
@@ -99,19 +116,19 @@ export default function App() {
                         androidActivePlayerCount++;
                     }
                 } else {
-                    if (player.status !== "idle") {
-                        console.log(
-                            idxString,
-                            "cleaning source - status:",
-                            player.status
-                        );
-                        player.replaceSourceAsync(null);
-                    } else {
-                        console.log(
-                            idxString,
-                            "requested to clean source - status:",
-                            player.status
-                        );
+                    // Only clean up videos that are far away and ready (not loading)
+                    if (Math.abs(idx - visibleIndex) > 2) {
+                        if (
+                            player.status === "readyToPlay" ||
+                            player.status === "error"
+                        ) {
+                            console.log(
+                                idxString,
+                                "cleaning source - status:",
+                                player.status
+                            );
+                            player.replaceSourceAsync(null);
+                        }
                     }
                 }
             });
