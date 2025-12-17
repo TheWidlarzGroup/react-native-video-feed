@@ -1,3 +1,4 @@
+import { Asset } from "expo-asset";
 import { VideoPlayer } from "react-native-video";
 
 export const SOURCES = [
@@ -12,10 +13,15 @@ export const SOURCES = [
     require("../assets/videos/9.mp4"),
 ];
 
-export const createListPlayer = (source: string) => {
-    const player = new VideoPlayer({
-        uri: source,
-    });
+export const loadVideoUris = async () => {
+    const assets = await Asset.loadAsync(SOURCES);
+    return assets.map((asset) => asset.uri);
+};
 
+export const createListPlayer = (uri: string) => {
+    const player = new VideoPlayer({
+        uri,
+    });
+    player.loop = true;
     return player;
 };

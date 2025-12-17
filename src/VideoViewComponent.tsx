@@ -16,46 +16,117 @@ const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 interface VideoViewComponentProps {
     item: VideoPlayer;
     index: number;
+    isActive: boolean;
 }
 
 const VideoViewComponent = ({
     item: player,
     index,
+    isActive,
 }: VideoViewComponentProps) => {
     const [isLoading, setIsLoading] = useState(
         player.status === "idle" || player.status === "loading"
     );
     const [isError, setIsError] = useState(player.status === "error");
     const [isPlaying, setIsPlaying] = useState(player.isPlaying);
+    const sourceUriRef = useRef(player.source?.uri ?? null);
     const userPausedRef = useRef(false);
 
-    // Sync isPlaying state
+    // Track source URI changes for retries
+    useEffect(() => {
+        if (player.source?.uri) {
+            sourceUriRef.current = player.source.uri;
+        }
+    }, [player.source?.uri]);
+
+    // Keep local UI state in sync with player events — no polling.
     useEffect(() => {
         setIsPlaying(player.isPlaying);
-        const interval = setInterval(() => {
-            setIsPlaying(player.isPlaying);
-        }, 100);
-        return () => clearInterval(interval);
     }, [player]);
 
-    // Simple preload on mount
+    // Auto control based on visibility
     useEffect(() => {
-        if (player.status === "idle" && player.source?.uri) {
+        if (!player) return;
+        if (isActive) {
             try {
-                player.preload();
+                if (player.muted === true) player.muted = false;
+                if (player.status === "idle" && player.source?.uri) {
+                    player.preload();
+                } else if (
+                    player.status === "readyToPlay" &&
+                    !player.isPlaying
+                ) {
+                    player.play();
+                }
             } catch (e) {
-                console.error(`[Video ${index}] Preload error:`, e);
+                // ignore
+            }
+        } else {
+            try {
+                if (player.isPlaying) player.pause();
+                if (player.muted !== true) player.muted = true;
+            } catch (e) {
+                // ignore
             }
         }
-    }, [player, index]);
+    }, [isActive, player]);
 
-    useEvent(player, "onLoad", (_) => {
+    // Quick watchdog: retry early for first item, then slower fallback
+    useEffect(() => {
+        if (!isActive) return;
+        if (!isLoading) return;
+        const shortRetry = setTimeout(() => {
+            try {
+                if (player.status === "idle" && player.source?.uri) {
+                    player.preload();
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 300);
+
+        const t = setTimeout(() => {
+            try {
+                if (player.status === "idle" && player.source?.uri) {
+                    player.preload();
+                } else if (
+                    player.status === "readyToPlay" &&
+                    !player.isPlaying
+                ) {
+                    player.play();
+                } else if (
+                    player.status === "loading" &&
+                    sourceUriRef.current
+                ) {
+                    // Retry source attach if stuck
+                    player.replaceSourceAsync({ uri: sourceUriRef.current });
+                    player.preload();
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 1200);
+        return () => {
+            clearTimeout(shortRetry);
+            clearTimeout(t);
+        };
+    }, [isActive, isLoading, player]);
+
+    useEvent(player, "onLoad", () => {
         setIsLoading(false);
         setIsError(false);
         player.loop = true;
+        if (isActive) {
+            try {
+                if (player.muted === true) player.muted = false;
+                player.play();
+            } catch (e) {
+                // ignore
+            }
+        }
     });
 
-    useEvent(player, "onStatusChange", (status) => {
+    useEvent(player, "onStatusChange", () => {
         setIsPlaying(player.isPlaying);
         if (player.status === "error") {
             setIsError(true);
@@ -63,11 +134,11 @@ const VideoViewComponent = ({
         } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-            if (player.muted === true) {
+            if (isActive && !player.isPlaying) {
                 try {
-                    player.muted = false;
+                    player.play();
                 } catch (e) {
-                    // Ignore
+                    // ignore
                 }
             }
         } else if (player.status === "idle") {
@@ -78,7 +149,7 @@ const VideoViewComponent = ({
         }
     });
 
-    useEvent(player, "onError", (error) => {
+    useEvent(player, "onError", () => {
         setIsError(true);
         setIsLoading(false);
     });
@@ -95,6 +166,7 @@ const VideoViewComponent = ({
         >
             {isLoading ? (
                 <View
+                    pointerEvents="none"
                     style={{
                         width: screenWidth,
                         height: screenHeight,
@@ -114,6 +186,7 @@ const VideoViewComponent = ({
             ) : null}
             {isError ? (
                 <View
+                    pointerEvents="none"
                     style={{
                         width: screenWidth,
                         height: screenHeight,
@@ -137,7 +210,8 @@ const VideoViewComponent = ({
                 controls={false}
                 pointerEvents="none"
             />
-            {!isPlaying &&
+            {userPausedRef.current &&
+            !isPlaying &&
             !isLoading &&
             !isError &&
             player.status === "readyToPlay" ? (
@@ -186,7 +260,6 @@ const VideoViewComponent = ({
                             userPausedRef.current = true;
                         } else {
                             player.play();
-                            userPausedRef.current = false;
                         }
                     } catch (e) {
                         console.error(`[Video ${index}] Play/pause error:`, e);

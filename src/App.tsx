@@ -1,43 +1,65 @@
 import { StatusBar } from "expo-status-bar";
-import React, {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-} from "react";
-import { Dimensions, FlatList, Platform, View, ViewabilityConfig } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    View,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
+    ViewabilityConfig,
+    ViewToken,
+} from "react-native";
 import { VideoPlayer } from "react-native-video";
 import BottomTabBar from "./BottomTabBar";
 import { styles } from "./styles";
-import { SOURCES, createListPlayer } from "./utils";
+import { createListPlayer, loadVideoUris } from "./utils";
 import VideoViewComponent from "./VideoViewComponent";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
+const MAX_PLAYERS = 20;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
+    const [uris, setUris] = useState<string[]>([]);
     const [visibleIndex, setVisibleIndex] = useState(0);
+    const [isBooting, setIsBooting] = useState(true);
     const playersRef = useRef<VideoPlayer[]>([]);
     const visibleIndexRef = useRef(0);
 
     useEffect(() => {
-        const initialPlayers = SOURCES.map((source) =>
-            createListPlayer(source)
-        );
-        setPlayers(initialPlayers);
-        playersRef.current = initialPlayers;
-
-        // Preload only first video
-        if (initialPlayers[0]?.source?.uri && initialPlayers[0].status === "idle") {
+        let mounted = true;
+        (async () => {
             try {
-                initialPlayers[0].preload();
+                const resolvedUris = await loadVideoUris();
+                if (!mounted) return;
+                setUris(resolvedUris);
+
+                const initialPlayers = resolvedUris.map((uri) =>
+                    createListPlayer(uri)
+                );
+                playersRef.current = initialPlayers;
+                setPlayers(initialPlayers);
+                setIsBooting(false);
+
+                // Preload first + neighbor
+                initialPlayers.slice(0, 2).forEach((player) => {
+                    if (player?.source?.uri && player.status === "idle") {
+                        try {
+                            player.preload();
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
+                });
             } catch (e) {
-                console.error("[App] Initial preload error:", e);
+                console.error("[App] Asset load error:", e);
+                setIsBooting(false);
             }
-        }
+        })();
 
         return () => {
-            initialPlayers.forEach((player) => {
+            playersRef.current.forEach((player) => {
                 try {
                     player.replaceSourceAsync(null);
                 } catch (e) {
@@ -58,103 +80,109 @@ export default function App() {
     }, [visibleIndex]);
 
     const fetchMoreVideos = useCallback(() => {
+        if (!uris.length) return;
+
         setPlayers((prevPlayers) => {
-            const nextIndex = prevPlayers.length % SOURCES.length;
-            const newSource = SOURCES[nextIndex];
-            const newPlayer = createListPlayer(newSource);
-            return [...prevPlayers, newPlayer];
+            const nextUri = uris[prevPlayers.length % uris.length];
+            const updated = [...prevPlayers];
+
+            let playerToUse: VideoPlayer | undefined;
+
+            if (updated.length >= MAX_PLAYERS) {
+                // Reuse the oldest player to keep memory bounded
+                playerToUse = updated.shift();
+            }
+
+            if (playerToUse) {
+                try {
+                    playerToUse.pause();
+                    playerToUse.muted = true;
+                    playerToUse.replaceSourceAsync({ uri: nextUri });
+                } catch (e) {
+                    // Ignore replace errors, fallback to new player
+                    playerToUse = createListPlayer(nextUri);
+                }
+            } else {
+                playerToUse = createListPlayer(nextUri);
+            }
+
+            const nextPlayers = [...updated, playerToUse];
+            playersRef.current = nextPlayers;
+            return nextPlayers;
         });
-    }, []);
+    }, [uris]);
 
-    // Simple lifecycle - preload visible + next 2, cleanup far away
-    useEffect(() => {
-        if (!players.length) return;
-
-        players.forEach((player, idx) => {
+    const syncPlaybackForIndex = useCallback((targetIndex: number) => {
+        const currentPlayers = playersRef.current;
+        currentPlayers.forEach((player, idx) => {
             if (!player) return;
 
-            const distance = Math.abs(idx - visibleIndex);
-            const isVisible = idx === visibleIndex;
+            const distance = Math.abs(idx - targetIndex);
 
             // Preload visible + next 2
-            if (distance <= 2 && player.source?.uri && player.status === "idle") {
+            if (
+                distance <= 2 &&
+                player.source?.uri &&
+                player.status === "idle"
+            ) {
                 try {
                     player.preload();
                 } catch (e) {
-                    // Ignore
+                    // ignore
                 }
             }
 
-            // Clean up far away
-            if (distance > 5 && (player.status === "readyToPlay" || player.status === "error")) {
+            if (idx === targetIndex) {
                 try {
-                    player.replaceSourceAsync(null);
+                    if (player.muted === true) {
+                        player.muted = false;
+                    }
+                    if (player.status === "idle" && player.source?.uri) {
+                        player.preload();
+                    }
+                    if (player.status === "readyToPlay" && !player.isPlaying) {
+                        player.play();
+                    }
                 } catch (e) {
-                    // Ignore
+                    // ignore
+                }
+            } else {
+                try {
+                    if (player.isPlaying) {
+                        player.pause();
+                    }
+                    if (player.muted !== true) {
+                        player.muted = true;
+                    }
+                } catch (e) {
+                    // ignore
                 }
             }
         });
-    }, [visibleIndex, players]);
+    }, []);
 
-    const onViewableItemsChanged = useCallback(
-        ({ viewableItems }: { viewableItems: any[] }) => {
-            if (
-                viewableItems &&
-                viewableItems.length > 0 &&
-                viewableItems[0].index !== null &&
-                typeof viewableItems[0].index === "number"
-            ) {
-                const newVisibleIndex = viewableItems[0].index;
-                const oldVisibleIndex = visibleIndexRef.current;
+    useEffect(() => {
+        if (!players.length) return;
+        syncPlaybackForIndex(visibleIndex);
+    }, [visibleIndex, players, syncPlaybackForIndex]);
 
-                if (newVisibleIndex === oldVisibleIndex) {
-                    return;
-                }
+    // Ensure initial item kicks off when boot completes
+    useEffect(() => {
+        if (isBooting) return;
+        syncPlaybackForIndex(0);
+    }, [isBooting, syncPlaybackForIndex]);
 
-                const currentPlayers = playersRef.current;
+    const handleMomentumScrollEnd = useCallback(
+        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            const offsetY = e.nativeEvent.contentOffset.y;
+            const nextIndex = Math.round(offsetY / screenHeight);
+            const clampedIndex = Math.max(0, nextIndex);
+            if (clampedIndex !== visibleIndexRef.current) {
+                visibleIndexRef.current = clampedIndex;
+                setVisibleIndex(clampedIndex);
 
-                // Pause all except visible
-                currentPlayers.forEach((player, idx) => {
-                    if (!player) return;
-
-                    if (idx !== newVisibleIndex) {
-                        try {
-                            if (player.isPlaying) {
-                                player.pause();
-                            }
-                            if (player.muted !== true) {
-                                player.muted = true;
-                            }
-                        } catch (e) {
-                            // Ignore
-                        }
-                    } else {
-                        // Visible video
-                        try {
-                            if (player.muted === true) {
-                                player.muted = false;
-                            }
-                            if (
-                                player.status === "idle" &&
-                                player.source?.uri
-                            ) {
-                                player.preload();
-                            } else if (
-                                player.status === "readyToPlay" &&
-                                !player.isPlaying
-                            ) {
-                                player.play();
-                            }
-                        } catch (e) {
-                            // Ignore
-                        }
-                    }
-                });
-
-                setVisibleIndex(newVisibleIndex);
-
-                // Fetch more if needed
-                if (currentPlayers.length - newVisibleIndex <= 2) {
+                const remaining = playersRef.current.length - clampedIndex;
+                if (remaining <= 3) {
                     fetchMoreVideos();
                 }
             }
@@ -163,39 +191,79 @@ export default function App() {
     );
 
     const viewabilityConfig = useRef<ViewabilityConfig>({
-        viewAreaCoveragePercentThreshold: 50, // Lower threshold for faster detection
-        minimumViewTime: 0, // Immediate detection
+        viewAreaCoveragePercentThreshold: 50,
+        minimumViewTime: 0,
         waitForInteraction: false,
-    }).current;
+    });
+
+    const onViewableItemsChanged = useCallback(
+        ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+            if (!viewableItems || viewableItems.length === 0) return;
+            const first = viewableItems[0];
+            if (first.index == null) return;
+            const newIndex = first.index;
+            if (newIndex === visibleIndexRef.current) return;
+            visibleIndexRef.current = newIndex;
+            setVisibleIndex(newIndex);
+
+            const remaining = playersRef.current.length - newIndex;
+            if (remaining <= 3) {
+                fetchMoreVideos();
+            }
+        },
+        [fetchMoreVideos]
+    );
 
     return (
         <View style={styles.container}>
-            <FlatList
-                data={players}
-                renderItem={({ item, index }) => (
-                    <VideoViewComponent item={item} index={index} />
-                )}
-                keyExtractor={(item, idx) => `${item.source?.uri}-${idx}`}
-                getItemLayout={(_, index) => ({
-                    length: screenHeight,
-                    offset: screenHeight * index,
-                    index,
-                })}
-                style={{ width: screenWidth, height: screenHeight }}
-                contentContainerStyle={{ flexGrow: 1 }}
-                horizontal={false}
-                snapToInterval={screenHeight}
-                snapToAlignment="start"
-                decelerationRate="fast"
-                pagingEnabled={true}
-                showsVerticalScrollIndicator={false}
-                viewabilityConfig={viewabilityConfig}
-                onViewableItemsChanged={onViewableItemsChanged}
-                removeClippedSubviews={Platform.OS === "android"}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                initialNumToRender={2}
-            />
+            {isBooting ? (
+                <View
+                    style={{
+                        width: screenWidth,
+                        height: screenHeight,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor: "black",
+                    }}
+                >
+                    <ActivityIndicator color="#fff" size="large" />
+                </View>
+            ) : (
+                <FlatList
+                    data={players}
+                    renderItem={({ item, index }) => (
+                        <VideoViewComponent
+                            item={item}
+                            index={index}
+                            isActive={index === visibleIndex}
+                        />
+                    )}
+                    keyExtractor={(item, idx) =>
+                        `${idx}-${item.source?.uri ?? "empty"}`
+                    }
+                    getItemLayout={(_, index) => ({
+                        length: screenHeight,
+                        offset: screenHeight * index,
+                        index,
+                    })}
+                    style={{ width: screenWidth, height: screenHeight }}
+                    horizontal={false}
+                    snapToInterval={screenHeight}
+                    snapToAlignment="start"
+                    decelerationRate="fast"
+                    pagingEnabled={true}
+                    showsVerticalScrollIndicator={false}
+                    removeClippedSubviews
+                    maxToRenderPerBatch={2}
+                    windowSize={5}
+                    initialNumToRender={1}
+                    onMomentumScrollEnd={handleMomentumScrollEnd}
+                    onScrollEndDrag={handleMomentumScrollEnd}
+                    scrollEventThrottle={16}
+                    viewabilityConfig={viewabilityConfig.current}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                />
+            )}
             <StatusBar style="light" />
             <BottomTabBar />
         </View>
