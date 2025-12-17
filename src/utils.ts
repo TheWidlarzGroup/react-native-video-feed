@@ -1,4 +1,4 @@
-import { Asset } from "expo-asset";
+import { Image } from "react-native";
 import { VideoPlayer } from "react-native-video";
 
 export const SOURCES = [
@@ -13,9 +13,8 @@ export const SOURCES = [
     require("../assets/videos/9.mp4"),
 ];
 
-export const loadVideoUris = async () => {
-    const assets = await Asset.loadAsync(SOURCES);
-    return assets.map((asset) => asset.uri);
+export const resolveVideoUris = () => {
+    return SOURCES.map((source) => Image.resolveAssetSource(source).uri);
 };
 
 export const createListPlayer = (uri: string) => {

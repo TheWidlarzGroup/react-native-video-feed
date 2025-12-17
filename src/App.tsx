@@ -13,11 +13,11 @@ import {
 import { VideoPlayer } from "react-native-video";
 import BottomTabBar from "./BottomTabBar";
 import { styles } from "./styles";
-import { createListPlayer, loadVideoUris } from "./utils";
+import { createListPlayer, resolveVideoUris } from "./utils";
 import VideoViewComponent from "./VideoViewComponent";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 4;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -29,34 +29,33 @@ export default function App() {
 
     useEffect(() => {
         let mounted = true;
-        (async () => {
-            try {
-                const resolvedUris = await loadVideoUris();
-                if (!mounted) return;
-                setUris(resolvedUris);
+        try {
+            // Resolve all asset URIs synchronously (no downloads) to avoid first-item black screen
+            const resolvedUris = resolveVideoUris();
+            if (!mounted) return;
+            setUris(resolvedUris);
 
-                const initialPlayers = resolvedUris.map((uri) =>
-                    createListPlayer(uri)
-                );
-                playersRef.current = initialPlayers;
-                setPlayers(initialPlayers);
-                setIsBooting(false);
+            const initialPlayers = resolvedUris.map((uri) =>
+                createListPlayer(uri)
+            );
+            playersRef.current = initialPlayers;
+            setPlayers(initialPlayers);
+            setIsBooting(false);
 
-                // Preload first + neighbor
-                initialPlayers.slice(0, 2).forEach((player) => {
-                    if (player?.source?.uri && player.status === "idle") {
-                        try {
-                            player.preload();
-                        } catch (e) {
-                            // ignore
-                        }
+            // Preload first + neighbor immediately
+            initialPlayers.slice(0, 2).forEach((player) => {
+                if (player?.source?.uri && player.status === "idle") {
+                    try {
+                        player.preload();
+                    } catch {
+                        // ignore
                     }
-                });
-            } catch (e) {
-                console.error("[App] Asset load error:", e);
-                setIsBooting(false);
-            }
-        })();
+                }
+            });
+        } catch (e) {
+            console.error("[App] Asset resolve error:", e);
+            setIsBooting(false);
+        }
 
         return () => {
             playersRef.current.forEach((player) => {

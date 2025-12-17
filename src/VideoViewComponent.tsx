@@ -57,6 +57,8 @@ const VideoViewComponent = ({
                     !player.isPlaying
                 ) {
                     player.play();
+                    userPausedRef.current = false;
+                    setIsPlaying(true);
                 }
             } catch (e) {
                 // ignore
@@ -64,6 +66,8 @@ const VideoViewComponent = ({
         } else {
             try {
                 if (player.isPlaying) player.pause();
+                // leaving screen => auto pause, hide button
+                userPausedRef.current = false;
                 if (player.muted !== true) player.muted = true;
             } catch (e) {
                 // ignore
@@ -120,6 +124,8 @@ const VideoViewComponent = ({
             try {
                 if (player.muted === true) player.muted = false;
                 player.play();
+                userPausedRef.current = false;
+                setIsPlaying(true);
             } catch (e) {
                 // ignore
             }
@@ -137,6 +143,8 @@ const VideoViewComponent = ({
             if (isActive && !player.isPlaying) {
                 try {
                     player.play();
+                    userPausedRef.current = false;
+                    setIsPlaying(true);
                 } catch (e) {
                     // ignore
                 }
@@ -234,6 +242,7 @@ const VideoViewComponent = ({
                         try {
                             player.play();
                             userPausedRef.current = false;
+                            setIsPlaying(true);
                         } catch (e) {
                             console.error(`[Video ${index}] Play error:`, e);
                         }
@@ -258,8 +267,11 @@ const VideoViewComponent = ({
                         if (player.isPlaying) {
                             player.pause();
                             userPausedRef.current = true;
+                            setIsPlaying(false);
                         } else {
                             player.play();
+                            userPausedRef.current = false;
+                            setIsPlaying(true);
                         }
                     } catch (e) {
                         console.error(`[Video ${index}] Play/pause error:`, e);
