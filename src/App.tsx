@@ -27,25 +27,19 @@ export default function App() {
     const playersRef = useRef<VideoPlayer[]>([]);
     const visibleIndexRef = useRef(0);
     const preloadAttemptedRef = useRef<Set<VideoPlayer>>(new Set());
-    // Track which video index each player represents for infinite scroll
     const playerVideoIndexRef = useRef<Map<VideoPlayer, number>>(new Map());
-    // Track if we're currently fetching to prevent infinite loops
     const fetchingRef = useRef(false);
     const flatListRef = useRef<FlatList<VideoPlayer> | null>(null);
 
-    // Safe preload helper that tracks attempts and handles errors
     const safePreload = useCallback((player: VideoPlayer) => {
         if (!player) return false;
 
-        // Check if we've already attempted to preload this player
         if (preloadAttemptedRef.current.has(player)) {
-            // Only retry if player is in idle state (might have been reset)
             if (player.status !== "idle") {
                 return false;
             }
         }
 
-        // Only preload if player is idle and has a valid URI
         if (player.status !== "idle" || !player.source?.uri) {
             return false;
         }
@@ -63,12 +57,10 @@ export default function App() {
     useEffect(() => {
         let mounted = true;
         try {
-            // Resolve all asset URIs synchronously (no downloads) to avoid first-item black screen
             const resolvedUris = resolveVideoUris();
             if (!mounted) return;
             setUris(resolvedUris);
 
-            // Create initial players - start with all 5 videos for smooth infinite scroll
             const initialPlayers = resolvedUris.map((uri, idx) => {
                 const player = createListPlayer(uri);
                 playerVideoIndexRef.current.set(player, idx);
@@ -78,19 +70,15 @@ export default function App() {
             setPlayers(initialPlayers);
             setIsBooting(false);
 
-            // Wait a tick for players to be fully initialized before preloading
-            // This prevents race conditions with player creation
             setTimeout(() => {
                 if (!mounted) return;
 
-                // Preload ALL videos upfront for smooth transitions - no loading screens!
-                // Stagger preloads slightly to avoid overwhelming the network
                 initialPlayers.forEach((player, idx) => {
                     setTimeout(() => {
                         if (mounted) {
                             safePreload(player);
                         }
-                    }, idx * 50); // 50ms delay between each preload
+                    }, idx * 50);
                 });
             }, 100);
         } catch (e) {
@@ -132,7 +120,6 @@ export default function App() {
         console.log("[App] fetchMoreVideos called - START");
 
         setPlayers((prevPlayers) => {
-            // Calculate the next video index based on current player count
             const nextVideoIndex = prevPlayers.length;
             const nextUri = uris[nextVideoIndex % uris.length];
             console.log(
@@ -144,8 +131,6 @@ export default function App() {
                 prevPlayers.length
             );
 
-            // Always create a new player for infinite scroll - don't reuse
-            // This ensures the FlatList always has new items to scroll to
             const newPlayer = createListPlayer(nextUri);
             playerVideoIndexRef.current.set(newPlayer, nextVideoIndex);
 
@@ -159,7 +144,6 @@ export default function App() {
             );
             playersRef.current = nextPlayers;
 
-            // Preload new player after creation
             setTimeout(() => {
                 safePreload(newPlayer);
             }, 100);
@@ -179,26 +163,20 @@ export default function App() {
 
                 const distance = Math.abs(idx - targetIndex);
 
-                // Aggressively preload: current + next 4 videos for smooth HLS transitions
-                // This ensures videos are ready before user scrolls to them
                 if (distance <= 4 && player.source?.uri) {
-                    // Only preload if in idle state (not already loading/ready/error)
                     if (player.status === "idle") {
                         safePreload(player);
                     }
                 }
 
                 if (idx === targetIndex) {
-                    // Active video - ensure it's playing
                     try {
                         if (player.muted === true) {
                             player.muted = false;
                         }
-                        // Ensure preload is called if needed
                         if (player.status === "idle" && player.source?.uri) {
                             safePreload(player);
                         }
-                        // Play when ready
                         if (
                             player.status === "readyToPlay" &&
                             !player.isPlaying
@@ -212,7 +190,6 @@ export default function App() {
                         );
                     }
                 } else {
-                    // Inactive video - pause and mute
                     try {
                         if (player.isPlaying) {
                             player.pause();
@@ -240,8 +217,6 @@ export default function App() {
         );
         syncPlaybackForIndex(visibleIndex);
 
-        // Proactively fetch more videos if we're getting close to the end
-        // Do this separately to avoid circular dependencies
         const currentPlayers = playersRef.current;
         const remaining = currentPlayers.length - visibleIndex;
         console.log(
@@ -255,17 +230,13 @@ export default function App() {
             currentPlayers.length
         );
 
-        // Fetch when we're within 3 videos of the end for smooth infinite scroll
-        // Fetch multiple videos at once to ensure we never run out
         if (remaining <= 3 && !fetchingRef.current && uris.length > 0) {
             console.log("[App] Fetching more videos... remaining:", remaining);
             fetchingRef.current = true;
 
-            // Fetch 2-3 videos ahead to ensure smooth scrolling
             const videosToFetch = Math.min(3, uris.length);
             console.log("[App] Will fetch", videosToFetch, "videos");
 
-            // Fetch videos sequentially with delays
             let fetchedCount = 0;
             const doFetch = () => {
                 if (fetchedCount < videosToFetch) {
@@ -299,10 +270,6 @@ export default function App() {
         fetchMoreVideos,
     ]);
 
-    // Proactive preloading: preload videos ahead of current position
-    // Removed to prevent infinite loops - preloading is handled in syncPlaybackForIndex
-
-    // Ensure initial item kicks off when boot completes
     useEffect(() => {
         if (isBooting) return;
         syncPlaybackForIndex(0);
@@ -311,7 +278,6 @@ export default function App() {
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             const offsetY = e.nativeEvent.contentOffset.y;
-            // Use precise calculation with proper rounding for one-by-one scrolling
             const exactIndex = offsetY / screenHeight;
             const nextIndex = Math.round(exactIndex);
             const clampedIndex = Math.max(
@@ -328,12 +294,11 @@ export default function App() {
                 playersCount: playersRef.current.length,
             });
 
-            // Only update if we've moved to a different video (prevent same-index updates)
             if (
                 clampedIndex !== visibleIndexRef.current &&
                 clampedIndex >= 0 &&
                 clampedIndex < playersRef.current.length &&
-                Math.abs(clampedIndex - visibleIndexRef.current) === 1 // Only allow one-by-one movement
+                Math.abs(clampedIndex - visibleIndexRef.current) === 1
             ) {
                 console.log(
                     "[Scroll] Updating visibleIndex from",
@@ -362,10 +327,8 @@ export default function App() {
         waitForInteraction: false,
     });
 
-    // Disable onViewableItemsChanged - we'll use onMomentumScrollEnd only
-    // This prevents conflicts and ensures one-by-one scrolling
     const onViewableItemsChanged = useCallback(() => {
-        // Disabled - using onMomentumScrollEnd instead for more reliable one-by-one scrolling
+        // Disabled
     }, []);
 
     return (
@@ -394,8 +357,6 @@ export default function App() {
                         />
                     )}
                     keyExtractor={(item, idx) => {
-                        // Use array index as key - each position in the list is unique
-                        // The video index can repeat (infinite scroll), but array positions don't
                         return `player-${idx}`;
                     }}
                     getItemLayout={(_, index) => ({
@@ -418,7 +379,6 @@ export default function App() {
                     initialNumToRender={1}
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={(e) => {
-                        // Handle scroll end drag - but be conservative to prevent jumps
                         const offsetY = e.nativeEvent.contentOffset.y;
                         const exactIndex = offsetY / screenHeight;
                         const nextIndex = Math.round(exactIndex);
@@ -427,7 +387,6 @@ export default function App() {
                             Math.min(nextIndex, playersRef.current.length - 1)
                         );
 
-                        // Only update if it's a one-step movement to prevent jumps
                         if (
                             clampedIndex !== visibleIndexRef.current &&
                             clampedIndex >= 0 &&
