@@ -31,11 +31,17 @@ const VideoViewComponent = ({
     const [isPlaying, setIsPlaying] = useState(player.isPlaying);
     const sourceUriRef = useRef(player.source?.uri ?? null);
     const userPausedRef = useRef(false);
+    const preloadAttemptedRef = useRef(false);
 
     // Track source URI changes for retries
     useEffect(() => {
         if (player.source?.uri) {
-            sourceUriRef.current = player.source.uri;
+            const newUri = player.source.uri;
+            if (sourceUriRef.current !== newUri) {
+                // Source changed, reset preload tracking
+                sourceUriRef.current = newUri;
+                preloadAttemptedRef.current = false;
+            }
         }
     }, [player.source?.uri]);
 
@@ -50,8 +56,19 @@ const VideoViewComponent = ({
         if (isActive) {
             try {
                 if (player.muted === true) player.muted = false;
-                if (player.status === "idle" && player.source?.uri) {
-                    player.preload();
+                // Only preload if idle and haven't attempted yet
+                // App.tsx handles most preloading, this is a fallback
+                if (
+                    player.status === "idle" &&
+                    player.source?.uri &&
+                    !preloadAttemptedRef.current
+                ) {
+                    try {
+                        player.preload();
+                        preloadAttemptedRef.current = true;
+                    } catch (e) {
+                        console.warn(`[Video ${index}] Preload error:`, e);
+                    }
                 } else if (
                     player.status === "readyToPlay" &&
                     !player.isPlaying
@@ -61,7 +78,7 @@ const VideoViewComponent = ({
                     setIsPlaying(true);
                 }
             } catch (e) {
-                // ignore
+                console.warn(`[Video ${index}] Active control error:`, e);
             }
         } else {
             try {
@@ -73,53 +90,62 @@ const VideoViewComponent = ({
                 // ignore
             }
         }
-    }, [isActive, player]);
+    }, [isActive, player, index]);
 
-    // Quick watchdog: retry early for first item, then slower fallback
+    // Watchdog: retry preload if stuck in loading/idle state
     useEffect(() => {
         if (!isActive) return;
         if (!isLoading) return;
-        const shortRetry = setTimeout(() => {
-            try {
-                if (player.status === "idle" && player.source?.uri) {
-                    player.preload();
-                }
-            } catch (e) {
-                // ignore
-            }
-        }, 300);
 
-        const t = setTimeout(() => {
+        // Only retry if we're stuck and haven't successfully preloaded
+        const retryTimeout = setTimeout(() => {
             try {
-                if (player.status === "idle" && player.source?.uri) {
-                    player.preload();
+                // If still idle after timeout, retry preload
+                if (
+                    player.status === "idle" &&
+                    player.source?.uri &&
+                    sourceUriRef.current === player.source.uri
+                ) {
+                    if (!preloadAttemptedRef.current) {
+                        player.preload();
+                        preloadAttemptedRef.current = true;
+                    }
                 } else if (
                     player.status === "readyToPlay" &&
-                    !player.isPlaying
+                    !player.isPlaying &&
+                    isActive
                 ) {
+                    // Ready but not playing - start playback
                     player.play();
-                } else if (
-                    player.status === "loading" &&
-                    sourceUriRef.current
-                ) {
-                    // Retry source attach if stuck
+                } else if (player.status === "error" && sourceUriRef.current) {
+                    // Error state - try to recover by replacing source
+                    console.warn(`[Video ${index}] Retrying after error`);
                     player.replaceSourceAsync({ uri: sourceUriRef.current });
-                    player.preload();
+                    preloadAttemptedRef.current = false;
+                    // Retry preload after source replacement
+                    setTimeout(() => {
+                        if (player.status === "idle" && player.source?.uri) {
+                            player.preload();
+                            preloadAttemptedRef.current = true;
+                        }
+                    }, 200);
                 }
             } catch (e) {
-                // ignore
+                console.warn(`[Video ${index}] Watchdog retry error:`, e);
             }
-        }, 1200);
+        }, 2000); // Longer timeout to avoid premature retries
+
         return () => {
-            clearTimeout(shortRetry);
-            clearTimeout(t);
+            clearTimeout(retryTimeout);
         };
-    }, [isActive, isLoading, player]);
+    }, [isActive, isLoading, player, index]);
 
     useEvent(player, "onLoad", () => {
         setIsLoading(false);
         setIsError(false);
         player.loop = true;
+        // Mark as successfully loaded
+        preloadAttemptedRef.current = true;
         if (isActive) {
             try {
                 if (player.muted === true) player.muted = false;
@@ -127,7 +153,7 @@ const VideoViewComponent = ({
                 userPausedRef.current = false;
                 setIsPlaying(true);
             } catch (e) {
-                // ignore
+                console.warn(`[Video ${index}] Play on load error:`, e);
             }
         }
     });
@@ -137,20 +163,24 @@ const VideoViewComponent = ({
         if (player.status === "error") {
             setIsError(true);
             setIsLoading(false);
+            // Reset preload tracking on error to allow retry
+            preloadAttemptedRef.current = false;
         } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
+            preloadAttemptedRef.current = true;
             if (isActive && !player.isPlaying) {
                 try {
                     player.play();
                     userPausedRef.current = false;
                     setIsPlaying(true);
                 } catch (e) {
-                    // ignore
+                    console.warn(`[Video ${index}] Play on ready error:`, e);
                 }
             }
         } else if (player.status === "idle") {
             setIsLoading(true);
+            // Don't reset preloadAttempted here - might be transitioning
         } else if (player.status === "loading") {
             setIsLoading(true);
             setIsError(false);
@@ -160,6 +190,8 @@ const VideoViewComponent = ({
     useEvent(player, "onError", () => {
         setIsError(true);
         setIsLoading(false);
+        // Reset preload tracking on error to allow retry
+        preloadAttemptedRef.current = false;
     });
 
     return (
