@@ -17,7 +17,8 @@ import { createListPlayer, resolveVideoUris } from "./utils";
 import VideoViewComponent from "./VideoViewComponent";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
-const MAX_PLAYERS = 4;
+const PLAYERS_AROUND_VIEWPORT = 4;
+const CLEANUP_THRESHOLD = 50;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -30,6 +31,45 @@ export default function App() {
     const playerVideoIndexRef = useRef<Map<VideoPlayer, number>>(new Map());
     const fetchingRef = useRef(false);
     const flatListRef = useRef<FlatList<VideoPlayer> | null>(null);
+    const scrollCountRef = useRef(0);
+
+    const cleanupOldPlayers = useCallback(() => {
+        const currentPlayers = playersRef.current;
+        const currentIndex = visibleIndexRef.current;
+
+        if (currentPlayers.length > PLAYERS_AROUND_VIEWPORT * 2) {
+            const keepStart = Math.max(
+                0,
+                currentIndex - PLAYERS_AROUND_VIEWPORT
+            );
+            const keepEnd = Math.min(
+                currentPlayers.length,
+                currentIndex + PLAYERS_AROUND_VIEWPORT * 2
+            );
+
+            const playersToKeep = currentPlayers.slice(keepStart, keepEnd);
+            const playersToRemove = [
+                ...currentPlayers.slice(0, keepStart),
+                ...currentPlayers.slice(keepEnd),
+            ];
+
+            playersToRemove.forEach((player) => {
+                try {
+                    player.pause();
+                    player.replaceSourceAsync(null);
+                    preloadAttemptedRef.current.delete(player);
+                    playerVideoIndexRef.current.delete(player);
+                } catch (e) {
+                    // ignore
+                }
+            });
+
+            if (playersToKeep.length < currentPlayers.length) {
+                setPlayers(playersToKeep);
+                playersRef.current = playersToKeep;
+            }
+        }
+    }, []);
 
     const safePreload = useCallback((player: VideoPlayer) => {
         if (!player) return false;
@@ -193,6 +233,7 @@ export default function App() {
                     try {
                         if (player.isPlaying) {
                             player.pause();
+                            player.currentTime = 0;
                         }
                         if (player.muted !== true) {
                             player.muted = true;
@@ -308,6 +349,11 @@ export default function App() {
                 );
                 visibleIndexRef.current = clampedIndex;
                 setVisibleIndex(clampedIndex);
+                scrollCountRef.current++;
+
+                if (scrollCountRef.current % CLEANUP_THRESHOLD === 0) {
+                    cleanupOldPlayers();
+                }
             } else if (Math.abs(clampedIndex - visibleIndexRef.current) > 1) {
                 console.warn(
                     "[Scroll] Blocked jump from",
@@ -322,14 +368,40 @@ export default function App() {
     );
 
     const viewabilityConfig = useRef<ViewabilityConfig>({
-        viewAreaCoveragePercentThreshold: 50,
-        minimumViewTime: 0,
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 100,
         waitForInteraction: false,
     });
 
-    const onViewableItemsChanged = useCallback(() => {
-        // Disabled
-    }, []);
+    const onViewableItemsChanged = useCallback(
+        ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+            if (!viewableItems || viewableItems.length === 0) return;
+
+            const mostVisible = viewableItems.reduce((prev, current) => {
+                const prevPercent = (prev as any).percentVisible || 0;
+                const currentPercent = (current as any).percentVisible || 0;
+                return currentPercent > prevPercent ? current : prev;
+            });
+
+            if (
+                mostVisible &&
+                mostVisible.isViewable &&
+                mostVisible.index != null &&
+                (mostVisible as any).percentVisible >= 0.5
+            ) {
+                const newIndex = mostVisible.index;
+                if (
+                    newIndex !== visibleIndexRef.current &&
+                    newIndex >= 0 &&
+                    newIndex < playersRef.current.length
+                ) {
+                    visibleIndexRef.current = newIndex;
+                    setVisibleIndex(newIndex);
+                }
+            }
+        },
+        []
+    );
 
     return (
         <View style={styles.container}>
@@ -368,10 +440,11 @@ export default function App() {
                     horizontal={false}
                     snapToInterval={screenHeight}
                     snapToAlignment="start"
-                    decelerationRate="fast"
+                    decelerationRate={0.92}
                     pagingEnabled={true}
-                    disableIntervalMomentum={true}
+                    disableIntervalMomentum={false}
                     disableScrollViewPanResponder={false}
+                    scrollEventThrottle={1}
                     showsVerticalScrollIndicator={false}
                     removeClippedSubviews
                     maxToRenderPerBatch={2}
@@ -405,7 +478,6 @@ export default function App() {
                     onScrollToIndexFailed={(info) => {
                         console.warn("[Scroll] ScrollToIndex failed:", info);
                     }}
-                    scrollEventThrottle={16}
                     viewabilityConfig={viewabilityConfig.current}
                     onViewableItemsChanged={onViewableItemsChanged}
                 />

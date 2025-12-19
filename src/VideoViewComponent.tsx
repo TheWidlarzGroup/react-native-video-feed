@@ -56,8 +56,6 @@ const VideoViewComponent = ({
         if (isActive) {
             try {
                 if (player.muted === true) player.muted = false;
-                // Only preload if idle and haven't attempted yet
-                // App.tsx handles most preloading, this is a fallback
                 if (
                     player.status === "idle" &&
                     player.source?.uri &&
@@ -82,8 +80,10 @@ const VideoViewComponent = ({
             }
         } else {
             try {
-                if (player.isPlaying) player.pause();
-                // leaving screen => auto pause, hide button
+                if (player.isPlaying) {
+                    player.pause();
+                    player.currentTime = 0;
+                }
                 userPausedRef.current = false;
                 if (player.muted !== true) player.muted = true;
             } catch (e) {
@@ -284,7 +284,7 @@ const VideoViewComponent = ({
                     <Ionicons name="play" size={50} color="#fff" />
                 </TouchableOpacity>
             ) : null}
-            <VideoOverlay />
+            <VideoOverlay isVisible={!isLoading && !isError && isActive} />
             <Pressable
                 style={{
                     position: "absolute",
