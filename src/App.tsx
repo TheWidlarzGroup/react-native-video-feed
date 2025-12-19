@@ -1,5 +1,11 @@
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -542,6 +548,33 @@ export default function App() {
         syncPlaybackForIndex(0);
     }, [isBooting, syncPlaybackForIndex]);
 
+    const handleScroll = useCallback(
+        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            if (isCleaningUpRef.current) return;
+
+            const offsetY = e.nativeEvent.contentOffset.y;
+            // Calculate which item is at the center of the screen (50% visible)
+            // Center of screen = offsetY + screenHeight/2
+            const centerY = offsetY + screenHeight / 2;
+            const centerIndex = Math.floor(centerY / screenHeight);
+            const clampedIndex = Math.max(
+                0,
+                Math.min(centerIndex, playersRef.current.length - 1)
+            );
+
+            // Update when center item changes and it's approximately at 50% visibility
+            if (
+                clampedIndex !== visibleIndexRef.current &&
+                clampedIndex >= 0 &&
+                clampedIndex < playersRef.current.length
+            ) {
+                visibleIndexRef.current = clampedIndex;
+                setVisibleIndex(clampedIndex);
+            }
+        },
+        []
+    );
+
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             if (isCleaningUpRef.current) {
@@ -624,8 +657,8 @@ export default function App() {
     );
 
     const viewabilityConfig = useRef<ViewabilityConfig>({
-        itemVisiblePercentThreshold: 50,
-        minimumViewTime: 100,
+        itemVisiblePercentThreshold: 50, // Trigger when 50% visible
+        minimumViewTime: 0, // No minimum view time - trigger immediately at 50%
         waitForInteraction: false,
     });
 
@@ -633,17 +666,19 @@ export default function App() {
         ({ viewableItems }: { viewableItems: ViewToken[] }) => {
             if (!viewableItems || viewableItems.length === 0) return;
 
+            // Find the item with highest visibility percentage
             const mostVisible = viewableItems.reduce((prev, current) => {
                 const prevPercent = (prev as any).percentVisible || 0;
                 const currentPercent = (current as any).percentVisible || 0;
                 return currentPercent > prevPercent ? current : prev;
             });
 
+            // Trigger when item is at least 50% visible
             if (
                 mostVisible &&
                 mostVisible.isViewable &&
                 mostVisible.index != null &&
-                (mostVisible as any).percentVisible >= 0.5
+                (mostVisible as any).percentVisible >= 50
             ) {
                 const newIndex = mostVisible.index;
                 if (
@@ -651,6 +686,13 @@ export default function App() {
                     newIndex >= 0 &&
                     newIndex < playersRef.current.length
                 ) {
+                    console.log(
+                        "[Viewability] Video",
+                        newIndex,
+                        "is",
+                        Math.round((mostVisible as any).percentVisible),
+                        "% visible - activating"
+                    );
                     visibleIndexRef.current = newIndex;
                     setVisibleIndex(newIndex);
                 }
@@ -658,6 +700,14 @@ export default function App() {
         },
         []
     );
+
+    // Create stable reference for viewabilityConfigCallbackPairs using useRef
+    const viewabilityConfigCallbackPairsRef = useRef([
+        {
+            viewabilityConfig: viewabilityConfig.current,
+            onViewableItemsChanged: onViewableItemsChanged,
+        },
+    ]);
 
     return (
         <View style={styles.container}>
@@ -705,7 +755,8 @@ export default function App() {
                     pagingEnabled={true}
                     disableIntervalMomentum={false}
                     disableScrollViewPanResponder={false}
-                    scrollEventThrottle={1}
+                    scrollEventThrottle={16}
+                    onScroll={handleScroll}
                     showsVerticalScrollIndicator={false}
                     removeClippedSubviews
                     maxToRenderPerBatch={2}
@@ -747,7 +798,9 @@ export default function App() {
                         console.warn("[Scroll] ScrollToIndex failed:", info);
                     }}
                     viewabilityConfig={viewabilityConfig.current}
-                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfigCallbackPairs={
+                        viewabilityConfigCallbackPairsRef.current
+                    }
                 />
             )}
             <StatusBar style="light" />
