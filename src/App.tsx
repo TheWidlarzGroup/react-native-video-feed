@@ -129,7 +129,7 @@ export default function App() {
             return;
         }
 
-        console.log("[App] fetchMoreVideos called");
+        console.log("[App] fetchMoreVideos called - START");
 
         setPlayers((prevPlayers) => {
             // Calculate the next video index based on current player count
@@ -154,7 +154,8 @@ export default function App() {
                 "[App] Total players after fetch:",
                 nextPlayers.length,
                 "new index:",
-                nextVideoIndex
+                nextVideoIndex,
+                "- STATE UPDATE"
             );
             playersRef.current = nextPlayers;
 
@@ -165,6 +166,8 @@ export default function App() {
 
             return nextPlayers;
         });
+
+        console.log("[App] fetchMoreVideos called - END");
     }, [uris, safePreload]);
 
     const syncPlaybackForIndex = useCallback(
@@ -257,29 +260,36 @@ export default function App() {
         if (remaining <= 3 && !fetchingRef.current && uris.length > 0) {
             console.log("[App] Fetching more videos... remaining:", remaining);
             fetchingRef.current = true;
+
             // Fetch 2-3 videos ahead to ensure smooth scrolling
             const videosToFetch = Math.min(3, uris.length);
-            let fetched = 0;
+            console.log("[App] Will fetch", videosToFetch, "videos");
 
-            const fetchNext = () => {
-                if (fetched < videosToFetch && !fetchingRef.current) {
-                    fetchingRef.current = true;
+            // Fetch videos sequentially with delays
+            let fetchedCount = 0;
+            const doFetch = () => {
+                if (fetchedCount < videosToFetch) {
+                    console.log(
+                        "[App] Fetching video",
+                        fetchedCount + 1,
+                        "of",
+                        videosToFetch
+                    );
                     fetchMoreVideos();
-                    fetched++;
-                    if (fetched < videosToFetch) {
+                    fetchedCount++;
+
+                    if (fetchedCount < videosToFetch) {
+                        setTimeout(doFetch, 150);
+                    } else {
                         setTimeout(() => {
                             fetchingRef.current = false;
-                            fetchNext();
-                        }, 100);
-                    } else {
-                        fetchingRef.current = false;
+                            console.log("[App] Finished fetching all videos");
+                        }, 200);
                     }
                 }
             };
 
-            setTimeout(() => {
-                fetchNext();
-            }, 50);
+            setTimeout(doFetch, 50);
         }
     }, [
         visibleIndex,
