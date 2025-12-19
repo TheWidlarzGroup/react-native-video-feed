@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -32,6 +32,7 @@ const VideoViewComponent = ({
     const sourceUriRef = useRef(player.source?.uri ?? null);
     const userPausedRef = useRef(false);
     const preloadAttemptedRef = useRef(false);
+    const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
 
     // Track source URI changes for retries
     useEffect(() => {
@@ -56,7 +57,16 @@ const VideoViewComponent = ({
         if (isActive) {
             try {
                 if (player.muted === true) player.muted = false;
-                if (
+
+                // If ready to play, hide loading and play immediately
+                if (player.status === "readyToPlay") {
+                    setIsLoading(false);
+                    if (!player.isPlaying) {
+                        player.play();
+                        userPausedRef.current = false;
+                        setIsPlaying(true);
+                    }
+                } else if (
                     player.status === "idle" &&
                     player.source?.uri &&
                     !preloadAttemptedRef.current
@@ -67,13 +77,6 @@ const VideoViewComponent = ({
                     } catch (e) {
                         console.warn(`[Video ${index}] Preload error:`, e);
                     }
-                } else if (
-                    player.status === "readyToPlay" &&
-                    !player.isPlaying
-                ) {
-                    player.play();
-                    userPausedRef.current = false;
-                    setIsPlaying(true);
                 }
             } catch (e) {
                 console.warn(`[Video ${index}] Active control error:`, e);
@@ -82,7 +85,7 @@ const VideoViewComponent = ({
             try {
                 if (player.isPlaying) {
                     player.pause();
-                    player.currentTime = 0;
+                    // Don't reset currentTime to prevent flicker
                 }
                 userPausedRef.current = false;
                 if (player.muted !== true) player.muted = true;
@@ -123,12 +126,14 @@ const VideoViewComponent = ({
                     player.replaceSourceAsync({ uri: sourceUriRef.current });
                     preloadAttemptedRef.current = false;
                     // Retry preload after source replacement
-                    setTimeout(() => {
+                    const retryPreloadTimeout = setTimeout(() => {
                         if (player.status === "idle" && player.source?.uri) {
                             player.preload();
                             preloadAttemptedRef.current = true;
                         }
+                        timeoutRefsRef.current.delete(retryPreloadTimeout);
                     }, 200);
+                    timeoutRefsRef.current.add(retryPreloadTimeout);
                 }
             } catch (e) {
                 console.warn(`[Video ${index}] Watchdog retry error:`, e);
@@ -137,6 +142,11 @@ const VideoViewComponent = ({
 
         return () => {
             clearTimeout(retryTimeout);
+            // Cleanup all timeouts
+            timeoutRefsRef.current.forEach((timeoutId) => {
+                clearTimeout(timeoutId);
+            });
+            timeoutRefsRef.current.clear();
         };
     }, [isActive, isLoading, player, index]);
 
@@ -314,4 +324,11 @@ const VideoViewComponent = ({
     );
 };
 
-export default VideoViewComponent;
+export default memo(VideoViewComponent, (prevProps, nextProps) => {
+    // Only re-render if player, index, or isActive changes
+    return (
+        prevProps.item === nextProps.item &&
+        prevProps.index === nextProps.index &&
+        prevProps.isActive === nextProps.isActive
+    );
+});
