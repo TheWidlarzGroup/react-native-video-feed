@@ -18,7 +18,8 @@ import VideoViewComponent from "./VideoViewComponent";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
-const CLEANUP_THRESHOLD = 50;
+const CLEANUP_THRESHOLD = 5;
+const MAX_PLAYERS_BEFORE_CLEANUP = 15;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -32,43 +33,134 @@ export default function App() {
     const fetchingRef = useRef(false);
     const flatListRef = useRef<FlatList<VideoPlayer> | null>(null);
     const scrollCountRef = useRef(0);
+    const isCleaningUpRef = useRef(false);
 
     const cleanupOldPlayers = useCallback(() => {
+        if (isCleaningUpRef.current) {
+            console.log("[Cleanup] SKIP - already cleaning up");
+            return;
+        }
+
+        isCleaningUpRef.current = true;
         const currentPlayers = playersRef.current;
         const currentIndex = visibleIndexRef.current;
 
-        if (currentPlayers.length > PLAYERS_AROUND_VIEWPORT * 2) {
-            const keepStart = Math.max(
-                0,
-                currentIndex - PLAYERS_AROUND_VIEWPORT
-            );
-            const keepEnd = Math.min(
-                currentPlayers.length,
-                currentIndex + PLAYERS_AROUND_VIEWPORT * 2
-            );
+        console.log(
+            "[Cleanup] START - players:",
+            currentPlayers.length,
+            "index:",
+            currentIndex
+        );
 
-            const playersToKeep = currentPlayers.slice(keepStart, keepEnd);
-            const playersToRemove = [
-                ...currentPlayers.slice(0, keepStart),
-                ...currentPlayers.slice(keepEnd),
-            ];
+        if (currentPlayers.length <= MAX_PLAYERS_BEFORE_CLEANUP) {
+            console.log(
+                "[Cleanup] SKIP - not enough players:",
+                currentPlayers.length
+            );
+            isCleaningUpRef.current = false;
+            return;
+        }
 
-            playersToRemove.forEach((player) => {
-                try {
-                    player.pause();
+        if (currentIndex < 0 || currentIndex >= currentPlayers.length) {
+            console.log(
+                "[Cleanup] SKIP - invalid index:",
+                currentIndex,
+                "players:",
+                currentPlayers.length
+            );
+            isCleaningUpRef.current = false;
+            return;
+        }
+
+        const keepStart = Math.max(0, currentIndex - PLAYERS_AROUND_VIEWPORT);
+        const keepEnd = Math.min(
+            currentPlayers.length,
+            currentIndex + PLAYERS_AROUND_VIEWPORT * 2
+        );
+
+        console.log("[Cleanup] Keeping players from", keepStart, "to", keepEnd);
+
+        const playersToKeep = currentPlayers.slice(keepStart, keepEnd);
+        const playersToRemove = [
+            ...currentPlayers.slice(0, keepStart),
+            ...currentPlayers.slice(keepEnd),
+        ];
+
+        console.log(
+            "[Cleanup] Removing",
+            playersToRemove.length,
+            "players, keeping",
+            playersToKeep.length
+        );
+
+        playersToRemove.forEach((player) => {
+            try {
+                if (player) {
+                    if (player.isPlaying) {
+                        player.pause();
+                    }
                     player.replaceSourceAsync(null);
                     preloadAttemptedRef.current.delete(player);
                     playerVideoIndexRef.current.delete(player);
-                } catch (e) {
-                    // ignore
                 }
-            });
-
-            if (playersToKeep.length < currentPlayers.length) {
-                setPlayers(playersToKeep);
-                playersRef.current = playersToKeep;
+            } catch (e) {
+                console.warn("[Cleanup] Error removing player:", e);
             }
+        });
+
+        if (
+            playersToKeep.length < currentPlayers.length &&
+            playersToKeep.length > 0
+        ) {
+            const newIndex = Math.max(
+                0,
+                Math.min(currentIndex - keepStart, playersToKeep.length - 1)
+            );
+            console.log(
+                "[Cleanup] Updating - old index:",
+                currentIndex,
+                "new index:",
+                newIndex,
+                "old players:",
+                currentPlayers.length,
+                "new players:",
+                playersToKeep.length
+            );
+
+            playersRef.current = playersToKeep;
+
+            visibleIndexRef.current = newIndex;
+            setVisibleIndex(newIndex);
+            console.log("[Cleanup] Updated visibleIndex to:", newIndex);
+
+            setPlayers(playersToKeep);
+
+            // Synchronize scroll position with new index using offset
+            const scrollOffset = screenHeight * newIndex;
+            setTimeout(() => {
+                try {
+                    flatListRef.current?.scrollToOffset({
+                        offset: scrollOffset,
+                        animated: false,
+                    });
+                    console.log(
+                        "[Cleanup] Scrolled to offset:",
+                        scrollOffset,
+                        "for index:",
+                        newIndex
+                    );
+                } catch (e) {
+                    console.warn("[Cleanup] Scroll sync error:", e);
+                } finally {
+                    isCleaningUpRef.current = false;
+                }
+            }, 100);
         }
+
+        console.log(
+            "[Cleanup] END - players after cleanup:",
+            playersRef.current.length
+        );
     }, []);
 
     const safePreload = useCallback((player: VideoPlayer) => {
@@ -153,50 +245,87 @@ export default function App() {
 
     const fetchMoreVideos = useCallback(() => {
         if (!uris.length) {
-            console.warn("[App] Cannot fetch more videos - no URIs");
+            console.warn("[Fetch] SKIP - no URIs");
             return;
         }
 
-        console.log("[App] fetchMoreVideos called - START");
+        if (fetchingRef.current) {
+            console.log("[Fetch] SKIP - already fetching");
+            return;
+        }
 
-        setPlayers((prevPlayers) => {
-            const nextVideoIndex = prevPlayers.length;
-            const nextUri = uris[nextVideoIndex % uris.length];
-            console.log(
-                "[App] Adding video at index",
-                nextVideoIndex,
-                "URI:",
-                nextUri,
-                "current players:",
-                prevPlayers.length
-            );
+        fetchingRef.current = true;
+        console.log("[Fetch] START");
 
-            const newPlayer = createListPlayer(nextUri);
-            playerVideoIndexRef.current.set(newPlayer, nextVideoIndex);
+        try {
+            setPlayers((prevPlayers) => {
+                const nextVideoIndex = prevPlayers.length;
+                const nextUri = uris[nextVideoIndex % uris.length];
+                console.log(
+                    "[Fetch] Adding video",
+                    nextVideoIndex,
+                    "URI:",
+                    nextUri.substring(0, 50) + "..."
+                );
 
-            const nextPlayers = [...prevPlayers, newPlayer];
-            console.log(
-                "[App] Total players after fetch:",
-                nextPlayers.length,
-                "new index:",
-                nextVideoIndex,
-                "- STATE UPDATE"
-            );
-            playersRef.current = nextPlayers;
+                const newPlayer = createListPlayer(nextUri);
+                playerVideoIndexRef.current.set(newPlayer, nextVideoIndex);
 
-            setTimeout(() => {
-                safePreload(newPlayer);
-            }, 100);
+                const nextPlayers = [...prevPlayers, newPlayer];
+                console.log(
+                    "[Fetch] Total players:",
+                    nextPlayers.length,
+                    "was:",
+                    prevPlayers.length
+                );
+                playersRef.current = nextPlayers;
 
-            return nextPlayers;
-        });
+                setTimeout(() => {
+                    try {
+                        safePreload(newPlayer);
+                    } finally {
+                        fetchingRef.current = false;
+                        console.log(
+                            "[Fetch] END - preload done, fetchingRef reset"
+                        );
+                    }
+                }, 100);
 
-        console.log("[App] fetchMoreVideos called - END");
+                return nextPlayers;
+            });
+        } catch (e) {
+            fetchingRef.current = false;
+            console.error("[Fetch] ERROR:", e);
+        }
     }, [uris, safePreload]);
 
     const syncPlaybackForIndex = useCallback(
         (targetIndex: number) => {
             const currentPlayers = playersRef.current;
+
+            if (!currentPlayers.length) {
+                console.warn("[Sync] SKIP - no players");
+                return;
+            }
+
+            if (targetIndex < 0 || targetIndex >= currentPlayers.length) {
+                console.warn(
+                    "[Sync] SKIP - invalid index:",
+                    targetIndex,
+                    "players:",
+                    currentPlayers.length
+                );
+                return;
+            }
+
+            if (!currentPlayers[targetIndex]) {
+                console.warn(
+                    "[Sync] SKIP - player at index",
+                    targetIndex,
+                    "does not exist"
+                );
+                return;
+            }
 
             currentPlayers.forEach((player, idx) => {
                 if (!player) return;
@@ -225,7 +354,7 @@ export default function App() {
                         }
                     } catch (e) {
                         console.warn(
-                            `[App] Error syncing active player ${idx}:`,
+                            `[Sync] Error syncing active player ${idx}:`,
                             e
                         );
                     }
@@ -248,39 +377,50 @@ export default function App() {
     );
 
     useEffect(() => {
-        if (!players.length) return;
+        const currentPlayers = playersRef.current;
+        if (!currentPlayers.length) return;
 
+        const currentIndex = visibleIndexRef.current;
         console.log(
             "[App] Syncing playback for index:",
-            visibleIndex,
+            currentIndex,
             "players count:",
-            players.length
+            currentPlayers.length
         );
-        syncPlaybackForIndex(visibleIndex);
+        syncPlaybackForIndex(currentIndex);
 
-        const currentPlayers = playersRef.current;
-        const remaining = currentPlayers.length - visibleIndex;
+        const remaining = currentPlayers.length - currentIndex;
         console.log(
             "[App] Remaining videos:",
             remaining,
             "fetching:",
             fetchingRef.current,
             "visibleIndex:",
-            visibleIndex,
+            currentIndex,
             "totalPlayers:",
             currentPlayers.length
         );
 
+        if (currentPlayers.length > MAX_PLAYERS_BEFORE_CLEANUP) {
+            console.log(
+                "[App] Triggering cleanup - players:",
+                currentPlayers.length,
+                "threshold:",
+                MAX_PLAYERS_BEFORE_CLEANUP
+            );
+            setTimeout(() => {
+                cleanupOldPlayers();
+            }, 100);
+        }
+
         if (remaining <= 3 && !fetchingRef.current && uris.length > 0) {
             console.log("[App] Fetching more videos... remaining:", remaining);
-            fetchingRef.current = true;
-
             const videosToFetch = Math.min(3, uris.length);
             console.log("[App] Will fetch", videosToFetch, "videos");
 
             let fetchedCount = 0;
             const doFetch = () => {
-                if (fetchedCount < videosToFetch) {
+                if (fetchedCount < videosToFetch && !fetchingRef.current) {
                     console.log(
                         "[App] Fetching video",
                         fetchedCount + 1,
@@ -293,10 +433,7 @@ export default function App() {
                     if (fetchedCount < videosToFetch) {
                         setTimeout(doFetch, 150);
                     } else {
-                        setTimeout(() => {
-                            fetchingRef.current = false;
-                            console.log("[App] Finished fetching all videos");
-                        }, 200);
+                        console.log("[App] Finished fetching all videos");
                     }
                 }
             };
@@ -309,6 +446,7 @@ export default function App() {
         syncPlaybackForIndex,
         uris.length,
         fetchMoreVideos,
+        cleanupOldPlayers,
     ]);
 
     useEffect(() => {
@@ -318,6 +456,11 @@ export default function App() {
 
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            if (isCleaningUpRef.current) {
+                console.log("[Scroll] SKIP - cleanup in progress");
+                return;
+            }
+
             const offsetY = e.nativeEvent.contentOffset.y;
             const exactIndex = offsetY / screenHeight;
             const nextIndex = Math.round(exactIndex);
@@ -350,9 +493,16 @@ export default function App() {
                 visibleIndexRef.current = clampedIndex;
                 setVisibleIndex(clampedIndex);
                 scrollCountRef.current++;
+                console.log("[Scroll] Scroll count:", scrollCountRef.current);
 
                 if (scrollCountRef.current % CLEANUP_THRESHOLD === 0) {
-                    cleanupOldPlayers();
+                    console.log(
+                        "[Scroll] Triggering cleanup - scroll count:",
+                        scrollCountRef.current
+                    );
+                    setTimeout(() => {
+                        cleanupOldPlayers();
+                    }, 100);
                 }
             } else if (Math.abs(clampedIndex - visibleIndexRef.current) > 1) {
                 console.warn(
@@ -452,6 +602,13 @@ export default function App() {
                     initialNumToRender={1}
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={(e) => {
+                        if (isCleaningUpRef.current) {
+                            console.log(
+                                "[Scroll] ScrollEndDrag SKIP - cleanup in progress"
+                            );
+                            return;
+                        }
+
                         const offsetY = e.nativeEvent.contentOffset.y;
                         const exactIndex = offsetY / screenHeight;
                         const nextIndex = Math.round(exactIndex);
