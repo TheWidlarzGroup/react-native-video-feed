@@ -27,7 +27,7 @@ const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
 const CLEANUP_THRESHOLD = 5;
 const MAX_PLAYERS_BEFORE_CLEANUP = 15;
-const SCROLL_BLOCK_TIMEOUT = 300;
+const SCROLL_BLOCK_TIMEOUT = 200;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
