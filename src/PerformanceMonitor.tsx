@@ -15,7 +15,7 @@ import {
 const PerformanceMonitor = () => {
     if (!PERFORMANCE_MONITOR_ENABLED) return null;
 
-    const [isVisible, setIsVisible] = useState(true);
+    const [isVisible, setIsVisible] = useState(false);
     const { metrics, summary, clear } = usePerformanceMetrics();
 
     const handleExport = () => {
