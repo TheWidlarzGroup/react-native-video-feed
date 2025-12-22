@@ -440,6 +440,7 @@ export default function App() {
             );
 
             if (
+                !scrollBlockedRef.current &&
                 clampedIndex !== visibleIndexRef.current &&
                 clampedIndex >= 0 &&
                 clampedIndex < playersRef.current.length
@@ -456,6 +457,9 @@ export default function App() {
             if (isCleaningUpRef.current) {
                 return;
             }
+            if (scrollBlockedRef.current) {
+                return;
+            }
 
             const offsetY = e.nativeEvent.contentOffset.y;
             const exactIndex = offsetY / screenHeight;
@@ -464,22 +468,6 @@ export default function App() {
                 0,
                 Math.min(nextIndex, playersRef.current.length - 1)
             );
-
-            scrollBlockedRef.current = true;
-            setScrollEnabled(false);
-
-            if (scrollBlockTimeoutRef.current) {
-                clearTimeout(scrollBlockTimeoutRef.current);
-            }
-
-            scrollBlockTimeoutRef.current = setTimeout(() => {
-                scrollBlockedRef.current = false;
-                setScrollEnabled(true);
-                scrollBlockTimeoutRef.current = null;
-            }, SCROLL_BLOCK_TIMEOUT);
-            if (timeoutRefsRef.current) {
-                timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
-            }
 
             if (
                 clampedIndex !== visibleIndexRef.current &&
@@ -501,6 +489,22 @@ export default function App() {
                     }
                 }
             }
+
+            scrollBlockedRef.current = true;
+            setScrollEnabled(false);
+
+            if (scrollBlockTimeoutRef.current) {
+                clearTimeout(scrollBlockTimeoutRef.current);
+            }
+
+            scrollBlockTimeoutRef.current = setTimeout(() => {
+                scrollBlockedRef.current = false;
+                setScrollEnabled(true);
+                scrollBlockTimeoutRef.current = null;
+            }, SCROLL_BLOCK_TIMEOUT);
+            if (timeoutRefsRef.current) {
+                timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
+            }
         },
         []
     );
@@ -514,6 +518,7 @@ export default function App() {
     const onViewableItemsChanged = useCallback(
         ({ viewableItems }: { viewableItems: ViewToken[] }) => {
             if (!viewableItems || viewableItems.length === 0) return;
+            if (scrollBlockedRef.current) return;
 
             const mostVisible = viewableItems.reduce((prev, current) => {
                 const prevPercent = (prev as any).percentVisible || 0;
@@ -604,6 +609,9 @@ export default function App() {
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={(e) => {
                         if (isCleaningUpRef.current) {
+                            return;
+                        }
+                        if (scrollBlockedRef.current) {
                             return;
                         }
 

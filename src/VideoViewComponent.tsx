@@ -33,6 +33,8 @@ const VideoViewComponent = ({
     const userPausedRef = useRef(false);
     const preloadAttemptedRef = useRef(false);
     const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
+    const pressStartTimeRef = useRef<number | null>(null);
+    const pressStartLocationRef = useRef<{ x: number; y: number } | null>(null);
     const wasEverReadyRef = useRef(
         player.status === "readyToPlay" ||
             (player.source?.uri &&
@@ -340,20 +342,57 @@ const VideoViewComponent = ({
                     bottom: 0,
                     zIndex: 15,
                 }}
-                onPress={() => {
-                    try {
-                        if (player.isPlaying) {
-                            player.pause();
-                            userPausedRef.current = true;
-                            setIsPlaying(false);
-                        } else {
-                            player.play();
-                            userPausedRef.current = false;
-                            setIsPlaying(true);
-                        }
-                    } catch (e) {
-                        // Ignore
+                onPressIn={(e) => {
+                    pressStartTimeRef.current = Date.now();
+                    pressStartLocationRef.current = {
+                        x: e.nativeEvent.locationX,
+                        y: e.nativeEvent.locationY,
+                    };
+                }}
+                onPressOut={(e) => {
+                    if (
+                        pressStartTimeRef.current === null ||
+                        pressStartLocationRef.current === null
+                    ) {
+                        return;
                     }
+
+                    const pressDuration =
+                        Date.now() - pressStartTimeRef.current;
+                    const pressDistance = Math.sqrt(
+                        Math.pow(
+                            e.nativeEvent.locationX -
+                                pressStartLocationRef.current.x,
+                            2
+                        ) +
+                            Math.pow(
+                                e.nativeEvent.locationY -
+                                    pressStartLocationRef.current.y,
+                                2
+                            )
+                    );
+
+                    const isQuickTap =
+                        pressDuration < 200 && pressDistance < 10;
+
+                    if (isQuickTap) {
+                        try {
+                            if (player.isPlaying) {
+                                player.pause();
+                                userPausedRef.current = true;
+                                setIsPlaying(false);
+                            } else {
+                                player.play();
+                                userPausedRef.current = false;
+                                setIsPlaying(true);
+                            }
+                        } catch (e) {
+                            // Ignore
+                        }
+                    }
+
+                    pressStartTimeRef.current = null;
+                    pressStartLocationRef.current = null;
                 }}
             />
         </View>
