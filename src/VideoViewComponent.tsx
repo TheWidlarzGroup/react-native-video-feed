@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useEvent, VideoPlayer, VideoView } from "react-native-video";
 import VideoOverlay from "./VideoOverlay";
+import { performanceMonitor } from "./performance";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 
@@ -89,6 +90,7 @@ const VideoViewComponent = ({
                     if (!wasEverReadyRef.current) {
                         setIsLoading(true);
                         try {
+                            performanceMonitor.startMark(`video_load_${index}`);
                             player.preload();
                             preloadAttemptedRef.current = true;
                         } catch (e) {
@@ -172,6 +174,14 @@ const VideoViewComponent = ({
     }, [isActive, isLoading, player, index]);
 
     useEvent(player, "onLoad", () => {
+        const loadTime = performanceMonitor.endMark(`video_load_${index}`);
+        if (loadTime !== null) {
+            performanceMonitor.recordMetric("video_load_time", loadTime, {
+                index,
+                wasPreloaded: preloadAttemptedRef.current,
+            });
+        }
+
         setIsLoading(false);
         setIsError(false);
         player.loop = true;

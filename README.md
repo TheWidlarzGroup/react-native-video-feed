@@ -300,6 +300,55 @@ setTimeout(() => {
 }, SCROLL_BLOCK_TIMEOUT);
 ```
 
+## Performance Monitoring
+
+The app includes built-in performance monitoring to track key metrics:
+
+### Tracked Metrics
+
+1. **Video Load Time**: Time to load video from idle to ready
+2. **Preload Effectiveness**: Number of preloaded videos ready when needed
+
+### Usage
+
+**In Development Mode:**
+
+-   Performance monitor overlay appears automatically (top-right corner)
+-   Shows real-time metrics and averages
+-   Clear button to reset metrics
+-   Hide button to minimize overlay
+
+**Programmatic Access:**
+
+```typescript
+import { performanceMonitor } from "./performance";
+
+// Record custom metric
+performanceMonitor.recordMetric("custom_metric", 123.45, { metadata: "value" });
+
+// Get metrics
+const metrics = performanceMonitor.getMetrics("video_load_time");
+const average = performanceMonitor.getAverageMetric("video_load_time");
+
+// Export all metrics
+const json = performanceMonitor.exportMetrics();
+```
+
+**Using Hook:**
+
+```typescript
+import { usePerformanceMetrics } from "./performance";
+
+const { summary, metrics, clear } = usePerformanceMetrics();
+```
+
+### Implementation
+
+-   Uses native `performance.now()` API (no external dependencies)
+-   Automatically tracks metrics during scroll and video events
+-   Only active in `__DEV__` mode (disabled in production)
+-   Lightweight with minimal overhead
+
 ## Performance Considerations
 
 ### Memory Management

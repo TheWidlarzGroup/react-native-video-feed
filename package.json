@@ -10,8 +10,6 @@
     },
     "dependencies": {
         "@expo/vector-icons": "^14.1.0",
-        "@legendapp/list": "^1.0.11",
-        "@shopify/flash-list": "^2.2.0",
         "expo": "~52.0.46",
         "expo-status-bar": "~2.0.1",
         "react": "18.3.1",

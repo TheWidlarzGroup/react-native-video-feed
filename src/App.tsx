@@ -22,6 +22,8 @@ import BottomTabBar from "./BottomTabBar";
 import { styles } from "./styles";
 import { createListPlayer, resolveVideoUris } from "./utils";
 import VideoViewComponent from "./VideoViewComponent";
+import { performanceMonitor } from "./performance";
+import PerformanceMonitor from "./PerformanceMonitor";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
@@ -244,6 +246,20 @@ export default function App() {
                 return;
             }
 
+            const targetPlayer = currentPlayers[targetIndex];
+            const wasReady = targetPlayer.status === "readyToPlay";
+            const preloadCount = Array.from(currentPlayers)
+                .slice(
+                    Math.max(0, targetIndex - 4),
+                    Math.min(currentPlayers.length, targetIndex + 5)
+                )
+                .filter(
+                    (p) =>
+                        p &&
+                        p.status === "readyToPlay" &&
+                        preloadAttemptedRef.current.has(p)
+                ).length;
+
             currentPlayers.forEach((player, idx) => {
                 if (!player) return;
 
@@ -289,6 +305,14 @@ export default function App() {
                     }
                 }
             });
+
+            if (preloadCount > 0) {
+                performanceMonitor.recordMetric(
+                    "preload_effectiveness",
+                    preloadCount,
+                    { targetIndex, totalNearby: 9 }
+                );
+            }
         },
         [safePreload]
     );
@@ -644,6 +668,7 @@ export default function App() {
             )}
             <StatusBar style="light" />
             <BottomTabBar />
+            <PerformanceMonitor />
         </View>
     );
 }
