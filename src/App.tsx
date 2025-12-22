@@ -26,6 +26,7 @@ const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
 const CLEANUP_THRESHOLD = 5;
 const MAX_PLAYERS_BEFORE_CLEANUP = 15;
+const SCROLL_BLOCK_TIMEOUT = 500;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -49,7 +50,6 @@ export default function App() {
 
     const cleanupOldPlayers = useCallback(() => {
         if (isCleaningUpRef.current) {
-            console.log("[Cleanup] SKIP - already cleaning up");
             return;
         }
 
@@ -57,29 +57,12 @@ export default function App() {
         const currentPlayers = playersRef.current;
         const currentIndex = visibleIndexRef.current;
 
-        console.log(
-            "[Cleanup] START - players:",
-            currentPlayers.length,
-            "index:",
-            currentIndex
-        );
-
         if (currentPlayers.length <= MAX_PLAYERS_BEFORE_CLEANUP) {
-            console.log(
-                "[Cleanup] SKIP - not enough players:",
-                currentPlayers.length
-            );
             isCleaningUpRef.current = false;
             return;
         }
 
         if (currentIndex < 0 || currentIndex >= currentPlayers.length) {
-            console.log(
-                "[Cleanup] SKIP - invalid index:",
-                currentIndex,
-                "players:",
-                currentPlayers.length
-            );
             isCleaningUpRef.current = false;
             return;
         }
@@ -90,38 +73,24 @@ export default function App() {
             currentIndex + PLAYERS_AROUND_VIEWPORT * 2
         );
 
-        console.log("[Cleanup] Keeping players from", keepStart, "to", keepEnd);
-
         const playersToKeep = currentPlayers.slice(keepStart, keepEnd);
         const playersToRemove = [
             ...currentPlayers.slice(0, keepStart),
             ...currentPlayers.slice(keepEnd),
         ];
 
-        console.log(
-            "[Cleanup] Removing",
-            playersToRemove.length,
-            "players, keeping",
-            playersToKeep.length
-        );
-
         playersToRemove.forEach((player) => {
             try {
                 if (player) {
-                    // Pause if playing
                     if (player.isPlaying) {
                         player.pause();
                     }
-                    // Release video source to free memory
                     player.replaceSourceAsync(null);
-                    // Remove from tracking refs
                     preloadAttemptedRef.current.delete(player);
                     playerVideoIndexRef.current.delete(player);
-                    // Clear any pending operations
-                    // Note: VideoPlayer should handle internal cleanup
                 }
             } catch (e) {
-                console.warn("[Cleanup] Error removing player:", e);
+                // Ignore
             }
         });
 
@@ -133,26 +102,14 @@ export default function App() {
                 0,
                 Math.min(currentIndex - keepStart, playersToKeep.length - 1)
             );
-            console.log(
-                "[Cleanup] Updating - old index:",
-                currentIndex,
-                "new index:",
-                newIndex,
-                "old players:",
-                currentPlayers.length,
-                "new players:",
-                playersToKeep.length
-            );
 
             playersRef.current = playersToKeep;
 
             visibleIndexRef.current = newIndex;
             setVisibleIndex(newIndex);
-            console.log("[Cleanup] Updated visibleIndex to:", newIndex);
 
             setPlayers(playersToKeep);
 
-            // Sync scroll position using requestAnimationFrame
             const raf1 = requestAnimationFrame(() => {
                 const raf2 = requestAnimationFrame(() => {
                     try {
@@ -161,26 +118,15 @@ export default function App() {
                             animated: false,
                             viewPosition: 0.5,
                         });
-                        console.log(
-                            "[Cleanup] Scrolled to index:",
-                            newIndex,
-                            "to prevent jumps"
-                        );
                     } catch (e) {
-                        // Fallback to offset if scrollToIndex fails
                         try {
                             const scrollOffset = screenHeight * newIndex;
                             flatListRef.current?.scrollToOffset({
                                 offset: scrollOffset,
                                 animated: false,
                             });
-                            console.log(
-                                "[Cleanup] Scrolled to offset:",
-                                scrollOffset,
-                                "as fallback"
-                            );
                         } catch (e2) {
-                            console.warn("[Cleanup] Scroll sync error:", e2);
+                            // Ignore
                         }
                     }
                 });
@@ -188,37 +134,25 @@ export default function App() {
             });
             rafRefsRef.current.add(raf1);
 
-            // Preload ALL nearby players immediately
             playersToKeep.forEach((player, idx) => {
                 if (player && player.source?.uri) {
                     const distance = Math.abs(idx - newIndex);
                     if (distance <= 4) {
-                        // Always try to preload if not already preloaded
-                        // or if player is idle (needs preload)
                         if (!preloadAttemptedRef.current.has(player)) {
-                            // Player not in preloadAttemptedRef - definitely needs preload
                             if (player.status === "idle") {
                                 safePreload(player);
                             }
                         } else if (player.status === "idle") {
-                            // Player was preloaded before but is now idle - needs re-preload
                             safePreload(player);
                         }
-                        // If player is already "readyToPlay", no need to preload again
                     }
                 }
             });
 
-            // Sync playback for new index
             syncPlaybackForIndex(newIndex);
 
             isCleaningUpRef.current = false;
         }
-
-        console.log(
-            "[Cleanup] END - players after cleanup:",
-            playersRef.current.length
-        );
     }, []);
 
     const safePreload = useCallback((player: VideoPlayer) => {
@@ -239,7 +173,6 @@ export default function App() {
             preloadAttemptedRef.current.add(player);
             return true;
         } catch (e) {
-            console.warn("[App] Preload error:", e);
             return false;
         }
     }, []);
@@ -275,31 +208,26 @@ export default function App() {
             }, 100);
             timeoutRefsRef.current.add(mainTimeout);
         } catch (e) {
-            console.error("[App] Asset resolve error:", e);
             setIsBooting(false);
         }
 
         return () => {
-            // Clear all timeouts
             timeoutRefsRef.current.forEach((timeoutId) => {
                 clearTimeout(timeoutId);
             });
             timeoutRefsRef.current.clear();
 
-            // Clear scroll block timeout
             if (scrollBlockTimeoutRef.current) {
                 clearTimeout(scrollBlockTimeoutRef.current);
                 scrollBlockTimeoutRef.current = null;
             }
             scrollBlockedRef.current = false;
 
-            // Cancel all requestAnimationFrame
             rafRefsRef.current.forEach((rafId) => {
                 cancelAnimationFrame(rafId);
             });
             rafRefsRef.current.clear();
 
-            // Cleanup all players
             playersRef.current.forEach((player) => {
                 try {
                     preloadAttemptedRef.current.delete(player);
@@ -326,40 +254,25 @@ export default function App() {
 
     const fetchMoreVideos = useCallback(() => {
         if (!uris.length) {
-            console.warn("[Fetch] SKIP - no URIs");
             return;
         }
 
         if (fetchingRef.current) {
-            console.log("[Fetch] SKIP - already fetching");
             return;
         }
 
         fetchingRef.current = true;
-        console.log("[Fetch] START");
 
         try {
             setPlayers((prevPlayers) => {
                 const nextVideoIndex = totalVideoCountRef.current;
                 const nextUri = uris[nextVideoIndex % uris.length];
-                console.log(
-                    "[Fetch] Adding video",
-                    nextVideoIndex,
-                    "URI:",
-                    nextUri.substring(0, 50) + "..."
-                );
 
                 const newPlayer = createListPlayer(nextUri);
                 playerVideoIndexRef.current.set(newPlayer, nextVideoIndex);
                 totalVideoCountRef.current = nextVideoIndex + 1;
 
                 const nextPlayers = [...prevPlayers, newPlayer];
-                console.log(
-                    "[Fetch] Total players:",
-                    nextPlayers.length,
-                    "was:",
-                    prevPlayers.length
-                );
                 playersRef.current = nextPlayers;
 
                 const preloadTimeout = setTimeout(() => {
@@ -367,9 +280,6 @@ export default function App() {
                         safePreload(newPlayer);
                     } finally {
                         fetchingRef.current = false;
-                        console.log(
-                            "[Fetch] END - preload done, fetchingRef reset"
-                        );
                     }
                 }, 100);
                 timeoutRefsRef.current.add(preloadTimeout);
@@ -378,7 +288,6 @@ export default function App() {
             });
         } catch (e) {
             fetchingRef.current = false;
-            console.error("[Fetch] ERROR:", e);
         }
     }, [uris, safePreload]);
 
@@ -387,26 +296,14 @@ export default function App() {
             const currentPlayers = playersRef.current;
 
             if (!currentPlayers.length) {
-                console.warn("[Sync] SKIP - no players");
                 return;
             }
 
             if (targetIndex < 0 || targetIndex >= currentPlayers.length) {
-                console.warn(
-                    "[Sync] SKIP - invalid index:",
-                    targetIndex,
-                    "players:",
-                    currentPlayers.length
-                );
                 return;
             }
 
             if (!currentPlayers[targetIndex]) {
-                console.warn(
-                    "[Sync] SKIP - player at index",
-                    targetIndex,
-                    "does not exist"
-                );
                 return;
             }
 
@@ -416,7 +313,6 @@ export default function App() {
                 const distance = Math.abs(idx - targetIndex);
 
                 if (distance <= 4 && player.source?.uri) {
-                    // Preload if idle and not already preloaded
                     if (
                         player.status === "idle" &&
                         !preloadAttemptedRef.current.has(player)
@@ -440,10 +336,7 @@ export default function App() {
                             player.play();
                         }
                     } catch (e) {
-                        console.warn(
-                            `[Sync] Error syncing active player ${idx}:`,
-                            e
-                        );
+                        // Ignore
                     }
                 } else {
                     try {
@@ -455,7 +348,7 @@ export default function App() {
                             player.muted = true;
                         }
                     } catch (e) {
-                        // ignore
+                        // Ignore
                     }
                 }
             });
@@ -466,42 +359,15 @@ export default function App() {
     useEffect(() => {
         const currentPlayers = playersRef.current;
         if (!currentPlayers.length) {
-            console.log("[App] useEffect SKIP - no players");
             return;
         }
 
         const currentIndex = visibleIndexRef.current;
-        console.log(
-            "[App] useEffect - Syncing playback for index:",
-            currentIndex,
-            "players count:",
-            currentPlayers.length,
-            "visibleIndex state:",
-            visibleIndex,
-            "players state length:",
-            players.length
-        );
         syncPlaybackForIndex(currentIndex);
 
         const remaining = currentPlayers.length - currentIndex;
-        console.log(
-            "[App] Remaining videos:",
-            remaining,
-            "fetching:",
-            fetchingRef.current,
-            "visibleIndex:",
-            currentIndex,
-            "totalPlayers:",
-            currentPlayers.length
-        );
 
         if (currentPlayers.length > MAX_PLAYERS_BEFORE_CLEANUP) {
-            console.log(
-                "[App] Triggering cleanup - players:",
-                currentPlayers.length,
-                "threshold:",
-                MAX_PLAYERS_BEFORE_CLEANUP
-            );
             const cleanupTimeout = setTimeout(() => {
                 cleanupOldPlayers();
             }, 100);
@@ -509,34 +375,17 @@ export default function App() {
         }
 
         if (remaining <= 3 && !fetchingRef.current && uris.length > 0) {
-            console.log(
-                "[App] Fetching more videos... remaining:",
-                remaining,
-                "fetching:",
-                fetchingRef.current,
-                "uris:",
-                uris.length
-            );
             const videosToFetch = Math.min(3, uris.length);
-            console.log("[App] Will fetch", videosToFetch, "videos");
 
             let fetchedCount = 0;
             const doFetch = () => {
                 if (fetchedCount < videosToFetch && !fetchingRef.current) {
-                    console.log(
-                        "[App] Fetching video",
-                        fetchedCount + 1,
-                        "of",
-                        videosToFetch
-                    );
                     fetchMoreVideos();
                     fetchedCount++;
 
                     if (fetchedCount < videosToFetch) {
                         const fetchTimeout = setTimeout(doFetch, 150);
                         timeoutRefsRef.current.add(fetchTimeout);
-                    } else {
-                        console.log("[App] Finished fetching all videos");
                     }
                 }
             };
@@ -562,13 +411,11 @@ export default function App() {
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             if (isCleaningUpRef.current) return;
 
-            // Block scroll if timeout is active
             if (scrollBlockedRef.current) {
                 const currentIndex = visibleIndexRef.current;
                 const currentOffset = currentIndex * screenHeight;
                 const offsetY = e.nativeEvent.contentOffset.y;
 
-                // Snap back to current position if trying to scroll
                 if (Math.abs(offsetY - currentOffset) > 50) {
                     requestAnimationFrame(() => {
                         try {
@@ -577,7 +424,7 @@ export default function App() {
                                 animated: false,
                             });
                         } catch (e) {
-                            // Ignore errors
+                            // Ignore
                         }
                     });
                 }
@@ -585,8 +432,6 @@ export default function App() {
             }
 
             const offsetY = e.nativeEvent.contentOffset.y;
-            // Calculate which item is at the center of the screen (50% visible)
-            // Center of screen = offsetY + screenHeight/2
             const centerY = offsetY + screenHeight / 2;
             const centerIndex = Math.floor(centerY / screenHeight);
             const clampedIndex = Math.max(
@@ -594,7 +439,6 @@ export default function App() {
                 Math.min(centerIndex, playersRef.current.length - 1)
             );
 
-            // Update when center item changes and it's approximately at 50% visibility
             if (
                 clampedIndex !== visibleIndexRef.current &&
                 clampedIndex >= 0 &&
@@ -610,7 +454,6 @@ export default function App() {
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             if (isCleaningUpRef.current) {
-                console.log("[Scroll] SKIP - cleanup in progress");
                 return;
             }
 
@@ -622,26 +465,18 @@ export default function App() {
                 Math.min(nextIndex, playersRef.current.length - 1)
             );
 
-            // Always block scroll after momentum ends, regardless of index change
-            // This prevents rapid scrolling
             scrollBlockedRef.current = true;
             setScrollEnabled(false);
-            console.log(
-                `[Scroll] ✅ BLOCKING scroll for 5 seconds after momentum end at index ${clampedIndex}`
-            );
 
-            // Clear existing timeout if any
             if (scrollBlockTimeoutRef.current) {
                 clearTimeout(scrollBlockTimeoutRef.current);
             }
 
-            // Set new timeout to unblock after 5 seconds
             scrollBlockTimeoutRef.current = setTimeout(() => {
                 scrollBlockedRef.current = false;
                 setScrollEnabled(true);
                 scrollBlockTimeoutRef.current = null;
-                console.log("[Scroll] Timeout ended - scrolling enabled again");
-            }, 1000);
+            }, SCROLL_BLOCK_TIMEOUT);
             if (timeoutRefsRef.current) {
                 timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
             }
@@ -653,11 +488,7 @@ export default function App() {
             ) {
                 const diff = Math.abs(clampedIndex - visibleIndexRef.current);
 
-                // Allow update if difference is 1 (normal scroll) OR if difference is large (after cleanup desync)
                 if (diff === 1 || diff > 3) {
-                    console.log(
-                        `[Scroll] Momentum end - scrolling from ${visibleIndexRef.current} to ${clampedIndex}, diff: ${diff}`
-                    );
                     visibleIndexRef.current = clampedIndex;
                     setVisibleIndex(clampedIndex);
                     scrollCountRef.current++;
@@ -669,22 +500,14 @@ export default function App() {
                         timeoutRefsRef.current.add(scrollCleanupTimeout);
                     }
                 }
-            } else if (Math.abs(clampedIndex - visibleIndexRef.current) > 1) {
-                console.warn(
-                    "[Scroll] Blocked jump from",
-                    visibleIndexRef.current,
-                    "to",
-                    clampedIndex,
-                    "- only one-by-one scrolling allowed"
-                );
             }
         },
         []
     );
 
     const viewabilityConfig = useRef<ViewabilityConfig>({
-        itemVisiblePercentThreshold: 50, // Trigger when 50% visible
-        minimumViewTime: 0, // No minimum view time - trigger immediately at 50%
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 0,
         waitForInteraction: false,
     });
 
@@ -692,14 +515,12 @@ export default function App() {
         ({ viewableItems }: { viewableItems: ViewToken[] }) => {
             if (!viewableItems || viewableItems.length === 0) return;
 
-            // Find the item with highest visibility percentage
             const mostVisible = viewableItems.reduce((prev, current) => {
                 const prevPercent = (prev as any).percentVisible || 0;
                 const currentPercent = (current as any).percentVisible || 0;
                 return currentPercent > prevPercent ? current : prev;
             });
 
-            // Trigger when item is at least 50% visible
             if (
                 mostVisible &&
                 mostVisible.isViewable &&
@@ -712,13 +533,6 @@ export default function App() {
                     newIndex >= 0 &&
                     newIndex < playersRef.current.length
                 ) {
-                    console.log(
-                        "[Viewability] Video",
-                        newIndex,
-                        "is",
-                        Math.round((mostVisible as any).percentVisible),
-                        "% visible - activating"
-                    );
                     visibleIndexRef.current = newIndex;
                     setVisibleIndex(newIndex);
                 }
@@ -727,7 +541,6 @@ export default function App() {
         []
     );
 
-    // Create stable reference for viewabilityConfigCallbackPairs using useRef
     const viewabilityConfigCallbackPairsRef = useRef([
         {
             viewabilityConfig: viewabilityConfig.current,
@@ -761,7 +574,6 @@ export default function App() {
                         />
                     )}
                     keyExtractor={(item) => {
-                        // Use unique video index as key (each player has unique index in history)
                         const videoIndex =
                             playerVideoIndexRef.current.get(item);
                         return videoIndex !== undefined
@@ -813,27 +625,18 @@ export default function App() {
                             visibleIndexRef.current = clampedIndex;
                             setVisibleIndex(clampedIndex);
 
-                            // Block scroll for 5 seconds after scrolling to a video
                             scrollBlockedRef.current = true;
                             setScrollEnabled(false);
-                            console.log(
-                                "[Scroll] Blocking scroll for 5 seconds"
-                            );
 
-                            // Clear existing timeout if any
                             if (scrollBlockTimeoutRef.current) {
                                 clearTimeout(scrollBlockTimeoutRef.current);
                             }
 
-                            // Set new timeout to unblock after 5 seconds
                             scrollBlockTimeoutRef.current = setTimeout(() => {
                                 scrollBlockedRef.current = false;
                                 setScrollEnabled(true);
                                 scrollBlockTimeoutRef.current = null;
-                                console.log(
-                                    "[Scroll] Timeout ended - scrolling enabled again"
-                                );
-                            }, 5000);
+                            }, SCROLL_BLOCK_TIMEOUT);
                             if (timeoutRefsRef.current) {
                                 timeoutRefsRef.current.add(
                                     scrollBlockTimeoutRef.current
@@ -841,8 +644,8 @@ export default function App() {
                             }
                         }
                     }}
-                    onScrollToIndexFailed={(info) => {
-                        console.warn("[Scroll] ScrollToIndex failed:", info);
+                    onScrollToIndexFailed={() => {
+                        // Ignore
                     }}
                     viewabilityConfig={viewabilityConfig.current}
                     viewabilityConfigCallbackPairs={
