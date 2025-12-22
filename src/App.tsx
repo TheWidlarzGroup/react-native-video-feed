@@ -43,6 +43,9 @@ export default function App() {
     const totalVideoCountRef = useRef(0);
     const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
     const rafRefsRef = useRef<Set<number>>(new Set());
+    const scrollBlockedRef = useRef(false);
+    const scrollBlockTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [scrollEnabled, setScrollEnabled] = useState(true);
 
     const cleanupOldPlayers = useCallback(() => {
         if (isCleaningUpRef.current) {
@@ -282,6 +285,13 @@ export default function App() {
                 clearTimeout(timeoutId);
             });
             timeoutRefsRef.current.clear();
+
+            // Clear scroll block timeout
+            if (scrollBlockTimeoutRef.current) {
+                clearTimeout(scrollBlockTimeoutRef.current);
+                scrollBlockTimeoutRef.current = null;
+            }
+            scrollBlockedRef.current = false;
 
             // Cancel all requestAnimationFrame
             rafRefsRef.current.forEach((rafId) => {
@@ -552,6 +562,28 @@ export default function App() {
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             if (isCleaningUpRef.current) return;
 
+            // Block scroll if timeout is active
+            if (scrollBlockedRef.current) {
+                const currentIndex = visibleIndexRef.current;
+                const currentOffset = currentIndex * screenHeight;
+                const offsetY = e.nativeEvent.contentOffset.y;
+
+                // Snap back to current position if trying to scroll
+                if (Math.abs(offsetY - currentOffset) > 50) {
+                    requestAnimationFrame(() => {
+                        try {
+                            flatListRef.current?.scrollToOffset({
+                                offset: currentOffset,
+                                animated: false,
+                            });
+                        } catch (e) {
+                            // Ignore errors
+                        }
+                    });
+                }
+                return;
+            }
+
             const offsetY = e.nativeEvent.contentOffset.y;
             // Calculate which item is at the center of the screen (50% visible)
             // Center of screen = offsetY + screenHeight/2
@@ -590,14 +622,29 @@ export default function App() {
                 Math.min(nextIndex, playersRef.current.length - 1)
             );
 
-            console.log("[Scroll] Momentum end:", {
-                offsetY,
-                exactIndex,
-                calculatedIndex: nextIndex,
-                clampedIndex,
-                currentIndex: visibleIndexRef.current,
-                playersCount: playersRef.current.length,
-            });
+            // Always block scroll after momentum ends, regardless of index change
+            // This prevents rapid scrolling
+            scrollBlockedRef.current = true;
+            setScrollEnabled(false);
+            console.log(
+                `[Scroll] ✅ BLOCKING scroll for 5 seconds after momentum end at index ${clampedIndex}`
+            );
+
+            // Clear existing timeout if any
+            if (scrollBlockTimeoutRef.current) {
+                clearTimeout(scrollBlockTimeoutRef.current);
+            }
+
+            // Set new timeout to unblock after 5 seconds
+            scrollBlockTimeoutRef.current = setTimeout(() => {
+                scrollBlockedRef.current = false;
+                setScrollEnabled(true);
+                scrollBlockTimeoutRef.current = null;
+                console.log("[Scroll] Timeout ended - scrolling enabled again");
+            }, 1000);
+            if (timeoutRefsRef.current) {
+                timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
+            }
 
             if (
                 clampedIndex !== visibleIndexRef.current &&
@@ -609,39 +656,18 @@ export default function App() {
                 // Allow update if difference is 1 (normal scroll) OR if difference is large (after cleanup desync)
                 if (diff === 1 || diff > 3) {
                     console.log(
-                        "[Scroll] Updating visibleIndex from",
-                        visibleIndexRef.current,
-                        "to",
-                        clampedIndex,
-                        "diff:",
-                        diff
+                        `[Scroll] Momentum end - scrolling from ${visibleIndexRef.current} to ${clampedIndex}, diff: ${diff}`
                     );
                     visibleIndexRef.current = clampedIndex;
                     setVisibleIndex(clampedIndex);
                     scrollCountRef.current++;
-                    console.log(
-                        "[Scroll] Scroll count:",
-                        scrollCountRef.current
-                    );
-                } else {
-                    console.warn(
-                        "[Scroll] Blocked jump from",
-                        visibleIndexRef.current,
-                        "to",
-                        clampedIndex,
-                        "- only one-by-one scrolling allowed"
-                    );
-                }
 
-                if (scrollCountRef.current % CLEANUP_THRESHOLD === 0) {
-                    console.log(
-                        "[Scroll] Triggering cleanup - scroll count:",
-                        scrollCountRef.current
-                    );
-                    const scrollCleanupTimeout = setTimeout(() => {
-                        cleanupOldPlayers();
-                    }, 100);
-                    timeoutRefsRef.current.add(scrollCleanupTimeout);
+                    if (scrollCountRef.current % CLEANUP_THRESHOLD === 0) {
+                        const scrollCleanupTimeout = setTimeout(() => {
+                            cleanupOldPlayers();
+                        }, 100);
+                        timeoutRefsRef.current.add(scrollCleanupTimeout);
+                    }
                 }
             } else if (Math.abs(clampedIndex - visibleIndexRef.current) > 1) {
                 console.warn(
@@ -755,6 +781,7 @@ export default function App() {
                     pagingEnabled={true}
                     disableIntervalMomentum={false}
                     disableScrollViewPanResponder={false}
+                    scrollEnabled={scrollEnabled}
                     scrollEventThrottle={16}
                     onScroll={handleScroll}
                     showsVerticalScrollIndicator={false}
@@ -765,9 +792,6 @@ export default function App() {
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={(e) => {
                         if (isCleaningUpRef.current) {
-                            console.log(
-                                "[Scroll] ScrollEndDrag SKIP - cleanup in progress"
-                            );
                             return;
                         }
 
@@ -786,12 +810,35 @@ export default function App() {
                             Math.abs(clampedIndex - visibleIndexRef.current) ===
                                 1
                         ) {
-                            console.log(
-                                "[Scroll] ScrollEndDrag - updating to",
-                                clampedIndex
-                            );
                             visibleIndexRef.current = clampedIndex;
                             setVisibleIndex(clampedIndex);
+
+                            // Block scroll for 5 seconds after scrolling to a video
+                            scrollBlockedRef.current = true;
+                            setScrollEnabled(false);
+                            console.log(
+                                "[Scroll] Blocking scroll for 5 seconds"
+                            );
+
+                            // Clear existing timeout if any
+                            if (scrollBlockTimeoutRef.current) {
+                                clearTimeout(scrollBlockTimeoutRef.current);
+                            }
+
+                            // Set new timeout to unblock after 5 seconds
+                            scrollBlockTimeoutRef.current = setTimeout(() => {
+                                scrollBlockedRef.current = false;
+                                setScrollEnabled(true);
+                                scrollBlockTimeoutRef.current = null;
+                                console.log(
+                                    "[Scroll] Timeout ended - scrolling enabled again"
+                                );
+                            }, 5000);
+                            if (timeoutRefsRef.current) {
+                                timeoutRefsRef.current.add(
+                                    scrollBlockTimeoutRef.current
+                                );
+                            }
                         }
                     }}
                     onScrollToIndexFailed={(info) => {
