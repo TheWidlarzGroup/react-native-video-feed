@@ -26,7 +26,7 @@ const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
 const CLEANUP_THRESHOLD = 5;
 const MAX_PLAYERS_BEFORE_CLEANUP = 15;
-const SCROLL_BLOCK_TIMEOUT = 500;
+const SCROLL_BLOCK_TIMEOUT = 400;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -445,8 +445,32 @@ export default function App() {
                 clampedIndex >= 0 &&
                 clampedIndex < playersRef.current.length
             ) {
-                visibleIndexRef.current = clampedIndex;
-                setVisibleIndex(clampedIndex);
+                const diff = Math.abs(clampedIndex - visibleIndexRef.current);
+                if (diff === 1) {
+                    visibleIndexRef.current = clampedIndex;
+                    setVisibleIndex(clampedIndex);
+                } else {
+                    const targetIndex =
+                        clampedIndex > visibleIndexRef.current
+                            ? visibleIndexRef.current + 1
+                            : visibleIndexRef.current - 1;
+                    const finalIndex = Math.max(
+                        0,
+                        Math.min(targetIndex, playersRef.current.length - 1)
+                    );
+                    visibleIndexRef.current = finalIndex;
+                    setVisibleIndex(finalIndex);
+                    requestAnimationFrame(() => {
+                        try {
+                            flatListRef.current?.scrollToOffset({
+                                offset: finalIndex * screenHeight,
+                                animated: false,
+                            });
+                        } catch (e) {
+                            // Ignore
+                        }
+                    });
+                }
             }
         },
         []
@@ -476,7 +500,7 @@ export default function App() {
             ) {
                 const diff = Math.abs(clampedIndex - visibleIndexRef.current);
 
-                if (diff === 1 || diff > 3) {
+                if (diff === 1) {
                     visibleIndexRef.current = clampedIndex;
                     setVisibleIndex(clampedIndex);
                     scrollCountRef.current++;
@@ -487,6 +511,27 @@ export default function App() {
                         }, 100);
                         timeoutRefsRef.current.add(scrollCleanupTimeout);
                     }
+                } else {
+                    const targetIndex =
+                        clampedIndex > visibleIndexRef.current
+                            ? visibleIndexRef.current + 1
+                            : visibleIndexRef.current - 1;
+                    const finalIndex = Math.max(
+                        0,
+                        Math.min(targetIndex, playersRef.current.length - 1)
+                    );
+                    visibleIndexRef.current = finalIndex;
+                    setVisibleIndex(finalIndex);
+                    requestAnimationFrame(() => {
+                        try {
+                            flatListRef.current?.scrollToOffset({
+                                offset: finalIndex * screenHeight,
+                                animated: false,
+                            });
+                        } catch (e) {
+                            // Ignore
+                        }
+                    });
                 }
             }
 
@@ -538,8 +583,11 @@ export default function App() {
                     newIndex >= 0 &&
                     newIndex < playersRef.current.length
                 ) {
-                    visibleIndexRef.current = newIndex;
-                    setVisibleIndex(newIndex);
+                    const diff = Math.abs(newIndex - visibleIndexRef.current);
+                    if (diff === 1) {
+                        visibleIndexRef.current = newIndex;
+                        setVisibleIndex(newIndex);
+                    }
                 }
             }
         },
@@ -594,9 +642,9 @@ export default function App() {
                     horizontal={false}
                     snapToInterval={screenHeight}
                     snapToAlignment="start"
-                    decelerationRate={0.92}
+                    decelerationRate={0.95}
                     pagingEnabled={true}
-                    disableIntervalMomentum={false}
+                    disableIntervalMomentum={true}
                     disableScrollViewPanResponder={false}
                     scrollEnabled={scrollEnabled}
                     scrollEventThrottle={16}
