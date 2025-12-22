@@ -5,6 +5,7 @@ import React, {
     useMemo,
     useRef,
     useState,
+    startTransition,
 } from "react";
 import {
     ActivityIndicator,
@@ -26,7 +27,7 @@ const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const PLAYERS_AROUND_VIEWPORT = 4;
 const CLEANUP_THRESHOLD = 5;
 const MAX_PLAYERS_BEFORE_CLEANUP = 15;
-const SCROLL_BLOCK_TIMEOUT = 400;
+const SCROLL_BLOCK_TIMEOUT = 300;
 
 export default function App() {
     const [players, setPlayers] = useState<VideoPlayer[]>([]);
@@ -67,92 +68,28 @@ export default function App() {
             return;
         }
 
-        const keepStart = Math.max(0, currentIndex - PLAYERS_AROUND_VIEWPORT);
-        const keepEnd = Math.min(
-            currentPlayers.length,
-            currentIndex + PLAYERS_AROUND_VIEWPORT * 2
-        );
+        const cleanupDistance = PLAYERS_AROUND_VIEWPORT * 2;
 
-        const playersToKeep = currentPlayers.slice(keepStart, keepEnd);
-        const playersToRemove = [
-            ...currentPlayers.slice(0, keepStart),
-            ...currentPlayers.slice(keepEnd),
-        ];
+        currentPlayers.forEach((player, idx) => {
+            if (!player) return;
 
-        playersToRemove.forEach((player) => {
-            try {
-                if (player) {
+            const distance = Math.abs(idx - currentIndex);
+
+            if (distance > cleanupDistance) {
+                try {
                     if (player.isPlaying) {
                         player.pause();
                     }
-                    player.replaceSourceAsync(null);
-                    preloadAttemptedRef.current.delete(player);
-                    playerVideoIndexRef.current.delete(player);
+                    if (player.source?.uri) {
+                        player.replaceSourceAsync(null);
+                    }
+                } catch (e) {
+                    // Ignore
                 }
-            } catch (e) {
-                // Ignore
             }
         });
 
-        if (
-            playersToKeep.length < currentPlayers.length &&
-            playersToKeep.length > 0
-        ) {
-            const newIndex = Math.max(
-                0,
-                Math.min(currentIndex - keepStart, playersToKeep.length - 1)
-            );
-
-            playersRef.current = playersToKeep;
-
-            visibleIndexRef.current = newIndex;
-            setVisibleIndex(newIndex);
-
-            setPlayers(playersToKeep);
-
-            const raf1 = requestAnimationFrame(() => {
-                const raf2 = requestAnimationFrame(() => {
-                    try {
-                        flatListRef.current?.scrollToIndex({
-                            index: newIndex,
-                            animated: false,
-                            viewPosition: 0.5,
-                        });
-                    } catch (e) {
-                        try {
-                            const scrollOffset = screenHeight * newIndex;
-                            flatListRef.current?.scrollToOffset({
-                                offset: scrollOffset,
-                                animated: false,
-                            });
-                        } catch (e2) {
-                            // Ignore
-                        }
-                    }
-                });
-                rafRefsRef.current.add(raf2);
-            });
-            rafRefsRef.current.add(raf1);
-
-            playersToKeep.forEach((player, idx) => {
-                if (player && player.source?.uri) {
-                    const distance = Math.abs(idx - newIndex);
-                    if (distance <= 4) {
-                        if (!preloadAttemptedRef.current.has(player)) {
-                            if (player.status === "idle") {
-                                safePreload(player);
-                            }
-                        } else if (player.status === "idle") {
-                            safePreload(player);
-                        }
-                    }
-                }
-            });
-
-            syncPlaybackForIndex(newIndex);
-
-            isCleaningUpRef.current = false;
-        }
+        isCleaningUpRef.current = false;
     }, []);
 
     const safePreload = useCallback((player: VideoPlayer) => {
@@ -547,9 +484,7 @@ export default function App() {
                 setScrollEnabled(true);
                 scrollBlockTimeoutRef.current = null;
             }, SCROLL_BLOCK_TIMEOUT);
-            if (timeoutRefsRef.current) {
-                timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
-            }
+            timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
         },
         []
     );
@@ -693,11 +628,9 @@ export default function App() {
                                 setScrollEnabled(true);
                                 scrollBlockTimeoutRef.current = null;
                             }, SCROLL_BLOCK_TIMEOUT);
-                            if (timeoutRefsRef.current) {
-                                timeoutRefsRef.current.add(
-                                    scrollBlockTimeoutRef.current
-                                );
-                            }
+                            timeoutRefsRef.current.add(
+                                scrollBlockTimeoutRef.current
+                            );
                         }
                     }}
                     onScrollToIndexFailed={() => {
