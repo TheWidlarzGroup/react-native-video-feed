@@ -16,7 +16,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'flex-end',
     padding: 20,
-    zIndex: 2,
+    zIndex: 25,
   },
   overlayRight: {
     justifyContent: 'center',

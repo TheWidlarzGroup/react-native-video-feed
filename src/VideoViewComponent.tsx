@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState, memo } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -64,143 +64,54 @@ const VideoViewComponent = ({
         }
     }, [player.source?.uri, player.status]);
 
+    // Sync isPlaying state more reliably
     useEffect(() => {
-        setIsPlaying(player.isPlaying);
-    }, [player]);
+        const currentPlaying = player.isPlaying;
+        if (currentPlaying !== isPlaying) {
+            setIsPlaying(currentPlaying);
+        }
+    }, [player.isPlaying, isPlaying]);
 
+    // Removed play/pause/mute logic - App.tsx syncPlaybackForIndex handles it
+    // Only update loading/error state here
     useEffect(() => {
         if (!player) return;
-        if (isActive) {
-            try {
-                if (player.muted === true) player.muted = false;
 
-                if (player.status === "readyToPlay") {
-                    setIsLoading(false);
-                    wasEverReadyRef.current = true;
-                    if (!player.isPlaying) {
-                        player.play();
-                        userPausedRef.current = false;
-                        setIsPlaying(true);
-                    }
-                } else if (
-                    player.status === "idle" &&
-                    player.source?.uri &&
-                    !preloadAttemptedRef.current
-                ) {
-                    if (!wasEverReadyRef.current) {
-                        setIsLoading(true);
-                        try {
-                            performanceMonitor.startMark(`video_load_${index}`);
-                            player.preload();
-                            preloadAttemptedRef.current = true;
-                        } catch (e) {
-                            // Ignore
-                        }
-                    } else {
-                        setIsLoading(false);
-                    }
-                } else if (
-                    player.status === "idle" &&
-                    wasEverReadyRef.current
-                ) {
-                    setIsLoading(false);
-                } else if (
-                    player.status === "loading" &&
-                    wasEverReadyRef.current
-                ) {
-                    setIsLoading(false);
-                }
-            } catch (e) {
-                // Ignore
-            }
-        } else {
-            try {
-                if (player.isPlaying) {
-                    player.pause();
-                }
-                userPausedRef.current = false;
-                if (player.muted !== true) player.muted = true;
-            } catch (e) {
-                // Ignore
+        if (player.status === "readyToPlay") {
+            setIsLoading(false);
+            setIsError(false);
+            wasEverReadyRef.current = true;
+        } else if (player.status === "error") {
+            setIsError(true);
+            setIsLoading(false);
+        } else if (player.status === "loading") {
+            setIsLoading(true);
+            setIsError(false);
+        } else if (player.status === "idle") {
+            if (wasEverReadyRef.current) {
+                setIsLoading(false);
+            } else {
+                setIsLoading(true);
             }
         }
-    }, [isActive, player, index]);
+    }, [player.status]);
 
-    useEffect(() => {
-        if (!isActive) return;
-        if (!isLoading) return;
-
-        const retryTimeout = setTimeout(() => {
-            try {
-                if (
-                    player.status === "idle" &&
-                    player.source?.uri &&
-                    sourceUriRef.current === player.source.uri
-                ) {
-                    if (!preloadAttemptedRef.current) {
-                        player.preload();
-                        preloadAttemptedRef.current = true;
-                    }
-                } else if (
-                    player.status === "readyToPlay" &&
-                    !player.isPlaying &&
-                    isActive
-                ) {
-                    player.play();
-                } else if (player.status === "error" && sourceUriRef.current) {
-                    player.replaceSourceAsync({ uri: sourceUriRef.current });
-                    preloadAttemptedRef.current = false;
-                    const retryPreloadTimeout = setTimeout(() => {
-                        if (player.status === "idle" && player.source?.uri) {
-                            player.preload();
-                            preloadAttemptedRef.current = true;
-                        }
-                        timeoutRefsRef.current.delete(retryPreloadTimeout);
-                    }, 200);
-                    timeoutRefsRef.current.add(retryPreloadTimeout);
-                }
-            } catch (e) {
-                // Ignore
-            }
-        }, 2000);
-
-        return () => {
-            clearTimeout(retryTimeout);
-            timeoutRefsRef.current.forEach((timeoutId) => {
-                clearTimeout(timeoutId);
-            });
-            timeoutRefsRef.current.clear();
-        };
-    }, [isActive, isLoading, player, index]);
+    // Removed retry logic - App.tsx syncPlaybackForIndex handles preloading and playback
 
     useEvent(player, "onLoad", () => {
-        const loadTime = performanceMonitor.endMark(`video_load_${index}`);
-        if (loadTime !== null) {
-            performanceMonitor.recordMetric("video_load_time", loadTime, {
-                index,
-                wasPreloaded: preloadAttemptedRef.current,
-            });
-        }
-
         setIsLoading(false);
         setIsError(false);
         player.loop = true;
-        preloadAttemptedRef.current = true;
         wasEverReadyRef.current = true;
-        if (isActive) {
-            try {
-                if (player.muted === true) player.muted = false;
-                player.play();
-                userPausedRef.current = false;
-                setIsPlaying(true);
-            } catch (e) {
-                // Ignore
-            }
-        }
+        // App.tsx syncPlaybackForIndex handles play/pause/mute
     });
 
     useEvent(player, "onStatusChange", () => {
-        setIsPlaying(player.isPlaying);
+        // Always sync isPlaying state from player
+        const currentPlaying = player.isPlaying;
+        if (currentPlaying !== isPlaying) {
+            setIsPlaying(currentPlaying);
+        }
         if (player.status === "error") {
             setIsError(true);
             setIsLoading(false);
@@ -208,17 +119,8 @@ const VideoViewComponent = ({
         } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-            preloadAttemptedRef.current = true;
             wasEverReadyRef.current = true;
-            if (isActive && !player.isPlaying) {
-                try {
-                    player.play();
-                    userPausedRef.current = false;
-                    setIsPlaying(true);
-                } catch (e) {
-                    // Ignore
-                }
-            }
+            // App.tsx syncPlaybackForIndex handles play/pause/mute
         } else if (player.status === "idle") {
             const likelyWasReady =
                 wasEverReadyRef.current || !!player.source?.uri;
@@ -257,9 +159,14 @@ const VideoViewComponent = ({
             style={{
                 width: screenWidth,
                 height: screenHeight,
+                maxHeight: screenHeight,
+                minHeight: screenHeight,
                 backgroundColor: "black",
                 justifyContent: "center",
                 alignItems: "center",
+                overflow: "hidden",
+                margin: 0,
+                padding: 0,
             }}
         >
             {isLoading ? (
@@ -304,11 +211,20 @@ const VideoViewComponent = ({
             ) : null}
             <VideoView
                 player={player}
-                style={{ width: screenWidth, height: screenHeight }}
+                style={{
+                    width: screenWidth,
+                    height: screenHeight,
+                    maxHeight: screenHeight,
+                    minHeight: screenHeight,
+                }}
                 controls={false}
                 pointerEvents="none"
             />
-            {userPausedRef.current &&
+            {isActive && !isLoading && !isError && (
+                <VideoOverlay isVisible={true} />
+            )}
+            {isActive &&
+            userPausedRef.current &&
             !isPlaying &&
             !isLoading &&
             !isError &&
@@ -323,10 +239,10 @@ const VideoViewComponent = ({
                         width: 80,
                         height: 80,
                         borderRadius: 40,
-                        backgroundColor: "rgba(0, 0, 0, 0.6)",
+                        backgroundColor: "rgba(0, 0, 0, 0.7)",
                         justifyContent: "center",
                         alignItems: "center",
-                        zIndex: 20,
+                        zIndex: 30,
                     }}
                     onPress={() => {
                         try {
@@ -342,7 +258,6 @@ const VideoViewComponent = ({
                     <Ionicons name="play" size={50} color="#fff" />
                 </TouchableOpacity>
             ) : null}
-            <VideoOverlay isVisible={!isLoading && !isError && isActive} />
             <Pressable
                 style={{
                     position: "absolute",
@@ -350,7 +265,7 @@ const VideoViewComponent = ({
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    zIndex: 15,
+                    zIndex: 5,
                 }}
                 onPressIn={(e) => {
                     pressStartTimeRef.current = Date.now();
@@ -409,10 +324,5 @@ const VideoViewComponent = ({
     );
 };
 
-export default memo(VideoViewComponent, (prevProps, nextProps) => {
-    return (
-        prevProps.item === nextProps.item &&
-        prevProps.index === nextProps.index &&
-        prevProps.isActive === nextProps.isActive
-    );
-});
+// Temporarily remove memo to debug isActive updates
+export default VideoViewComponent;

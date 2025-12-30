@@ -10,12 +10,15 @@
     },
     "dependencies": {
         "@expo/vector-icons": "^14.1.0",
+        "@legendapp/list": "^2.0.19",
         "expo": "~52.0.46",
         "expo-status-bar": "~2.0.1",
         "react": "18.3.1",
         "react-native": "0.76.9",
+        "react-native-nitro-fetch": "^0.1.6",
         "react-native-nitro-modules": "^0.31.0",
-        "react-native-video": "7.0.0-beta.2"
+        "react-native-video": "7.0.0-beta.2",
+        "react-native-worklets-core": "^1.6.2"
     },
     "devDependencies": {
         "@babel/core": "^7.25.2",
