@@ -119,7 +119,7 @@ const VideoViewComponent = ({
                 padding: 0,
             }}
         >
-            {isLoading ? (
+            {isLoading && isActive ? (
                 <View
                     pointerEvents="none"
                     style={{

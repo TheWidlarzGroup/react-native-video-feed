@@ -141,11 +141,19 @@ export default function App() {
 
                     newPlayers.forEach((player) => {
                         const rafId = requestAnimationFrame(() => {
-                            try {
-                                safePreload(player);
-                            } catch (e) {
-                                // Ignore
-                            }
+                            const checkAndPreload = () => {
+                                if (
+                                    player.source?.uri &&
+                                    player.status === "idle"
+                                ) {
+                                    safePreload(player);
+                                } else if (player.source?.uri) {
+                                    setTimeout(checkAndPreload, 50);
+                                } else {
+                                    setTimeout(checkAndPreload, 50);
+                                }
+                            };
+                            checkAndPreload();
                         });
                         rafRefsRef.current.add(rafId);
                     });
@@ -200,7 +208,8 @@ export default function App() {
                 const currentUri = player.source?.uri;
 
                 // Always set source based on position - this fixes incorrect sequences
-                if (currentUri !== expectedUri) {
+                const sourceChanged = currentUri !== expectedUri;
+                if (sourceChanged) {
                     try {
                         player.replaceSourceAsync({ uri: expectedUri });
                         preloadAttemptedRef.current.delete(player);
@@ -218,6 +227,7 @@ export default function App() {
                         if (player.muted) player.muted = false;
                         if (
                             player.status === "idle" &&
+                            player.source?.uri &&
                             !preloadAttemptedRef.current.has(player)
                         ) {
                             safePreload(player);
@@ -231,15 +241,43 @@ export default function App() {
                     } else if (isInPreloadRange) {
                         if (player.isPlaying) player.pause();
                         if (!player.muted) player.muted = true;
-                        if (
-                            player.status === "idle" &&
-                            !preloadAttemptedRef.current.has(player)
-                        ) {
-                            setTimeout(() => {
-                                if (player.status === "idle") {
+
+                        // Preload if source is set and player is ready
+                        if (player.source?.uri) {
+                            if (
+                                player.status === "idle" &&
+                                !preloadAttemptedRef.current.has(player)
+                            ) {
+                                // If source was just changed, wait a bit for it to settle
+                                if (sourceChanged) {
+                                    setTimeout(() => {
+                                        if (
+                                            player.status === "idle" &&
+                                            player.source?.uri
+                                        ) {
+                                            safePreload(player);
+                                        }
+                                    }, 100);
+                                } else {
                                     safePreload(player);
                                 }
-                            }, 50);
+                            } else if (
+                                player.status === "loading" &&
+                                !preloadAttemptedRef.current.has(player)
+                            ) {
+                                // Wait for loading to complete, then preload
+                                const checkStatus = () => {
+                                    if (
+                                        player.status === "idle" &&
+                                        player.source?.uri
+                                    ) {
+                                        safePreload(player);
+                                    } else if (player.status === "loading") {
+                                        setTimeout(checkStatus, 50);
+                                    }
+                                };
+                                setTimeout(checkStatus, 50);
+                            }
                         }
                     } else {
                         if (player.isPlaying) player.pause();
@@ -258,16 +296,14 @@ export default function App() {
     );
 
     useEffect(() => {
-        // Use playersRef to avoid race conditions with setPlayers
         const currentPlayers = playersRef.current;
         if (currentPlayers.length === 0) return;
-        syncPlaybackForIndex(visibleIndexRef.current);
-    }, [visibleIndex, syncPlaybackForIndex]);
-
-    useEffect(() => {
-        if (isBooting) return;
-        syncPlaybackForIndex(0);
-    }, [isBooting, syncPlaybackForIndex]);
+        if (isBooting) {
+            syncPlaybackForIndex(0);
+        } else {
+            syncPlaybackForIndex(visibleIndexRef.current);
+        }
+    }, [visibleIndex, isBooting, syncPlaybackForIndex]);
 
     const viewabilityConfig = {
         itemVisiblePercentThreshold: 50,
@@ -310,68 +346,23 @@ export default function App() {
 
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            // Finalize position after scroll ends - this is the source of truth
             const offsetY = e.nativeEvent.contentOffset.y;
-            const viewportHeight = e.nativeEvent.layoutMeasurement.height;
-            const scrollPosition = offsetY + viewportHeight / 2;
-            const newIndex = Math.round(scrollPosition / screenHeight);
             const playersCount = playersRef.current.length;
+
+            const exactIndex = Math.round(offsetY / screenHeight);
             const clampedIndex = Math.max(
                 0,
-                Math.min(newIndex, playersCount > 0 ? playersCount - 1 : 0)
+                Math.min(exactIndex, playersCount > 0 ? playersCount - 1 : 0)
             );
 
             const currentIndex = visibleIndexRef.current;
-            const diff = Math.abs(clampedIndex - currentIndex);
-
-            // CRITICAL: Only allow adjacent changes (diff === 1) to prevent jumps
-            if (diff > 1) {
-                // Snap to adjacent position in the direction of scroll
-                const snappedIndex =
-                    clampedIndex > currentIndex
-                        ? currentIndex + 1
-                        : currentIndex - 1;
-                const finalIndex = Math.max(
-                    0,
-                    Math.min(snappedIndex, playersCount - 1)
-                );
-
-                // Check viewability for snapped position
-                const itemStart = finalIndex * screenHeight;
-                const itemEnd = itemStart + screenHeight;
-                const viewportStart = offsetY;
-                const viewportEnd = offsetY + viewportHeight;
-                const visibleStart = Math.max(itemStart, viewportStart);
-                const visibleEnd = Math.min(itemEnd, viewportEnd);
-                const visibleHeight = Math.max(0, visibleEnd - visibleStart);
-                const visiblePercent = (visibleHeight / screenHeight) * 100;
-
-                if (visiblePercent >= 50 && finalIndex !== currentIndex) {
-                    visibleIndexRef.current = finalIndex;
-                    setVisibleIndex(finalIndex);
-                }
-                return;
-            }
-
-            // Normal adjacent change - check viewability
             if (
                 clampedIndex !== currentIndex &&
                 clampedIndex >= 0 &&
                 clampedIndex < playersCount
             ) {
-                const itemStart = clampedIndex * screenHeight;
-                const itemEnd = itemStart + screenHeight;
-                const viewportStart = offsetY;
-                const viewportEnd = offsetY + viewportHeight;
-                const visibleStart = Math.max(itemStart, viewportStart);
-                const visibleEnd = Math.min(itemEnd, viewportEnd);
-                const visibleHeight = Math.max(0, visibleEnd - visibleStart);
-                const visiblePercent = (visibleHeight / screenHeight) * 100;
-
-                if (visiblePercent >= 50) {
-                    visibleIndexRef.current = clampedIndex;
-                    setVisibleIndex(clampedIndex);
-                }
+                visibleIndexRef.current = clampedIndex;
+                setVisibleIndex(clampedIndex);
             }
         },
         []
