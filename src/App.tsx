@@ -6,7 +6,6 @@ import {
     View,
     NativeScrollEvent,
     NativeSyntheticEvent,
-    ViewabilityConfig,
 } from "react-native";
 import { VideoPlayer } from "react-native-video";
 import {
@@ -31,10 +30,8 @@ export default function App() {
     const playersRef = useRef<VideoPlayer[]>([]);
     const visibleIndexRef = useRef(0);
     const preloadAttemptedRef = useRef<Set<VideoPlayer>>(new Set());
-    const playerVideoIndexRef = useRef<Map<VideoPlayer, number>>(new Map());
     const fetchingRef = useRef(false);
     const listRef = useRef<LegendListRef | null>(null);
-    const totalVideoCountRef = useRef(0);
     const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
     const rafRefsRef = useRef<Set<number>>(new Set());
 
@@ -76,29 +73,22 @@ export default function App() {
                 });
             });
 
-            const initialPlayers = resolvedUris.map((uri, idx) => {
-                const player = createListPlayer(uri);
-                playerVideoIndexRef.current.set(player, idx);
-                return player;
+            const initialPlayers = resolvedUris.map((uri) => {
+                return createListPlayer(uri);
             });
-            totalVideoCountRef.current = resolvedUris.length;
             playersRef.current = initialPlayers;
             setPlayers(initialPlayers);
             setIsBooting(false);
 
-            const mainTimeout = setTimeout(() => {
-                if (!mounted) return;
-
-                initialPlayers.forEach((player, idx) => {
-                    const preloadTimeout = setTimeout(() => {
-                        if (mounted) {
-                            safePreload(player);
-                        }
-                    }, idx * 50);
-                    timeoutRefsRef.current.add(preloadTimeout);
+            // Preload all players immediately using requestAnimationFrame
+            initialPlayers.forEach((player, idx) => {
+                const rafId = requestAnimationFrame(() => {
+                    if (mounted) {
+                        safePreload(player);
+                    }
                 });
-            }, 100);
-            timeoutRefsRef.current.add(mainTimeout);
+                rafRefsRef.current.add(rafId);
+            });
         } catch (e) {
             setIsBooting(false);
         }
@@ -117,8 +107,6 @@ export default function App() {
             playersRef.current.forEach((player) => {
                 try {
                     preloadAttemptedRef.current.delete(player);
-                    playerVideoIndexRef.current.delete(player);
-                    // Don't clear source - causes black screens
                 } catch (e) {
                     // Ignore
                 }
@@ -126,7 +114,6 @@ export default function App() {
             setPlayers([]);
             playersRef.current = [];
             preloadAttemptedRef.current.clear();
-            playerVideoIndexRef.current.clear();
         };
     }, [safePreload]);
 
@@ -139,178 +126,131 @@ export default function App() {
     }, [visibleIndex]);
 
     const fetchMoreVideos = useCallback(() => {
-        console.log("[FETCH] fetchMoreVideos called", {
-            urisLength: uris.length,
-            fetching: fetchingRef.current,
-            currentPlayers: playersRef.current.length,
-            totalVideoCount: totalVideoCountRef.current,
-        });
-
-        if (!uris.length) {
-            console.log("[FETCH] No URIs, returning");
-            return;
-        }
-
-        if (fetchingRef.current) {
-            console.log("[FETCH] Already fetching, returning");
-            return;
-        }
-
         fetchingRef.current = true;
 
-        try {
-            setPlayers((prevPlayers) => {
-                const nextVideoIndex = totalVideoCountRef.current;
-                const nextUri = uris[nextVideoIndex % uris.length];
+        const videosToFetch = Math.min(3, uris.length);
+        let fetchedCount = 0;
+        const newPlayers: VideoPlayer[] = [];
+        const currentLength = playersRef.current.length;
 
-                console.log("[FETCH] Creating new player", {
-                    nextVideoIndex,
-                    nextUri,
-                    uriIndex: nextVideoIndex % uris.length,
-                    prevPlayersCount: prevPlayers.length,
+        const fetchNext = () => {
+            if (fetchedCount >= videosToFetch) {
+                setPlayers((prevPlayers) => {
+                    const nextPlayers = [...prevPlayers, ...newPlayers];
+                    playersRef.current = nextPlayers;
+
+                    newPlayers.forEach((player) => {
+                        const rafId = requestAnimationFrame(() => {
+                            try {
+                                safePreload(player);
+                            } catch (e) {
+                                // Ignore
+                            }
+                        });
+                        rafRefsRef.current.add(rafId);
+                    });
+
+                    fetchingRef.current = false;
+                    return nextPlayers;
                 });
+                return;
+            }
 
-                // Prefetch video URL with nitro-fetch
-                prefetch(nextUri, {
-                    headers: { prefetchKey: `video-${nextVideoIndex}` },
-                }).catch(() => {
-                    // Ignore prefetch errors
-                });
+            // CRITICAL: Position in array = currentLength + newPlayers.length
+            // This ensures source matches position: 0,1,2,3,4,0,1,2,3,4...
+            const positionInArray = currentLength + newPlayers.length;
+            const expectedUri = uris[positionInArray % uris.length];
 
-                const newPlayer = createListPlayer(nextUri);
-                playerVideoIndexRef.current.set(newPlayer, nextVideoIndex);
-                totalVideoCountRef.current = nextVideoIndex + 1;
+            prefetch(expectedUri, {
+                headers: { prefetchKey: `video-${positionInArray}` },
+            }).catch(() => {});
 
-                const nextPlayers = [...prevPlayers, newPlayer];
-                playersRef.current = nextPlayers;
+            const newPlayer = createListPlayer(expectedUri);
+            newPlayers.push(newPlayer);
 
-                console.log("[FETCH] New player created", {
-                    newPlayerIndex: nextVideoIndex,
-                    newPlayersCount: nextPlayers.length,
-                    totalVideoCount: totalVideoCountRef.current,
-                });
+            fetchedCount++;
+            setTimeout(fetchNext, 100);
+        };
 
-                const preloadTimeout = setTimeout(() => {
-                    try {
-                        safePreload(newPlayer);
-                    } finally {
-                        fetchingRef.current = false;
-                        console.log("[FETCH] Preload done, fetching = false");
-                    }
-                }, 100);
-                timeoutRefsRef.current.add(preloadTimeout);
-
-                return nextPlayers;
-            });
-        } catch (e) {
-            console.error("[FETCH] Error in fetchMoreVideos", e);
-            fetchingRef.current = false;
-        }
+        fetchNext();
     }, [uris, safePreload]);
 
     const syncPlaybackForIndex = useCallback(
         (targetIndex: number) => {
             const currentPlayers = playersRef.current;
-            console.log("[SYNC] syncPlaybackForIndex called", {
-                targetIndex,
-                playersCount: currentPlayers.length,
-                visibleIndex: visibleIndexRef.current,
-            });
 
             if (
                 !currentPlayers.length ||
                 targetIndex < 0 ||
-                targetIndex >= currentPlayers.length
+                targetIndex >= currentPlayers.length ||
+                !uris.length
             ) {
-                console.log("[SYNC] Invalid targetIndex, returning", {
-                    targetIndex,
-                    playersCount: currentPlayers.length,
-                });
                 return;
             }
 
-            // Preload: 1 behind, 4 ahead (max 5 active players)
             const preloadStart = Math.max(0, targetIndex - 1);
-            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 5);
-
-            console.log("[SYNC] Preload range", {
-                targetIndex,
-                preloadStart,
-                preloadEnd,
-                playersCount: currentPlayers.length,
-            });
+            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 6);
 
             currentPlayers.forEach((player, idx) => {
                 if (!player) return;
 
-                const videoIndex = playerVideoIndexRef.current.get(player);
+                // CRITICAL: Source MUST match position in array (idx), not videoIndex
+                // This ensures correct sequential playback: 0,1,2,3,4,0,1,2,3,4...
+                const expectedUri = uris[idx % uris.length];
+                const currentUri = player.source?.uri;
+
+                // Always set source based on position - this fixes incorrect sequences
+                if (currentUri !== expectedUri) {
+                    try {
+                        player.replaceSourceAsync({ uri: expectedUri });
+                        preloadAttemptedRef.current.delete(player);
+                    } catch (e) {
+                        // Ignore
+                    }
+                }
+
                 const isInPreloadRange =
                     idx >= preloadStart && idx < preloadEnd;
                 const isActive = idx === targetIndex;
 
                 try {
                     if (isActive) {
-                        // Active player: unmute and play
-                        console.log("[SYNC] Active player BEFORE", {
-                            index: idx,
-                            videoIndex,
-                            status: player.status,
-                            isPlaying: player.isPlaying,
-                            muted: player.muted,
-                            hasSource: !!player.source?.uri,
-                        });
-
-                        if (player.muted) {
-                            player.muted = false;
-                            console.log("[SYNC] Unmuted player", idx);
-                        }
-
+                        if (player.muted) player.muted = false;
                         if (
                             player.status === "idle" &&
-                            player.source?.uri &&
                             !preloadAttemptedRef.current.has(player)
                         ) {
                             safePreload(player);
                         }
-
-                        // Always try to play if ready - don't check isPlaying
-                        if (player.status === "readyToPlay") {
-                            console.log("[SYNC] Calling play() on player", idx);
-                            try {
-                                player.play();
-                            } catch (e) {
-                                console.error(
-                                    "[SYNC] Error playing player",
-                                    idx,
-                                    e
-                                );
-                            }
+                        if (
+                            player.status === "readyToPlay" &&
+                            !player.isPlaying
+                        ) {
+                            player.play();
                         }
-
-                        console.log("[SYNC] Active player AFTER", {
-                            index: idx,
-                            status: player.status,
-                            isPlaying: player.isPlaying,
-                            muted: player.muted,
-                        });
                     } else if (isInPreloadRange) {
-                        // Preload range: preload and pause
+                        if (player.isPlaying) player.pause();
+                        if (!player.muted) player.muted = true;
                         if (
                             player.status === "idle" &&
-                            player.source?.uri &&
                             !preloadAttemptedRef.current.has(player)
                         ) {
-                            safePreload(player);
+                            setTimeout(() => {
+                                if (player.status === "idle") {
+                                    safePreload(player);
+                                }
+                            }, 50);
                         }
-                        if (player.isPlaying) player.pause();
-                        if (!player.muted) player.muted = true;
                     } else {
-                        // Outside range: just pause
                         if (player.isPlaying) player.pause();
                         if (!player.muted) player.muted = true;
+                        if (player.source?.uri) {
+                            player.replaceSourceAsync(null);
+                            preloadAttemptedRef.current.delete(player);
+                        }
                     }
                 } catch (e) {
-                    console.error("[SYNC] Error processing player", idx, e);
+                    // Ignore
                 }
             });
         },
@@ -318,12 +258,9 @@ export default function App() {
     );
 
     useEffect(() => {
-        if (players.length === 0) return;
-        console.log("[EFFECT] visibleIndex changed", {
-            visibleIndex,
-            playersCount: players.length,
-            visibleIndexRef: visibleIndexRef.current,
-        });
+        // Use playersRef to avoid race conditions with setPlayers
+        const currentPlayers = playersRef.current;
+        if (currentPlayers.length === 0) return;
         syncPlaybackForIndex(visibleIndexRef.current);
     }, [visibleIndex, syncPlaybackForIndex]);
 
@@ -332,58 +269,113 @@ export default function App() {
         syncPlaybackForIndex(0);
     }, [isBooting, syncPlaybackForIndex]);
 
-    const handleScroll = useCallback(() => {
-        // Empty - let handleMomentumScrollEnd handle index updates
-    }, []);
+    const viewabilityConfig = {
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 0,
+    };
+
+    const viewabilityConfigCallbackPairsRef = useRef([
+        {
+            viewabilityConfig,
+            onViewableItemsChanged: ({
+                viewableItems,
+            }: {
+                viewableItems: Array<{
+                    index: number | null;
+                    isViewable: boolean;
+                }>;
+            }) => {
+                if (viewableItems.length > 0) {
+                    const firstViewable = viewableItems[0];
+                    if (
+                        firstViewable.index !== null &&
+                        firstViewable.isViewable &&
+                        firstViewable.index !== visibleIndexRef.current
+                    ) {
+                        visibleIndexRef.current = firstViewable.index;
+                        setVisibleIndex(firstViewable.index);
+                    }
+                }
+            },
+        },
+    ]);
+
+    const handleScroll = useCallback(
+        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            // Only track scroll position, don't update visibleIndex here
+            // onViewableItemsChanged handles real-time viewability updates
+        },
+        []
+    );
 
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            // Finalize position after scroll ends - this is the source of truth
             const offsetY = e.nativeEvent.contentOffset.y;
-            const newIndex = Math.round(offsetY / screenHeight);
+            const viewportHeight = e.nativeEvent.layoutMeasurement.height;
+            const scrollPosition = offsetY + viewportHeight / 2;
+            const newIndex = Math.round(scrollPosition / screenHeight);
             const playersCount = playersRef.current.length;
             const clampedIndex = Math.max(
                 0,
                 Math.min(newIndex, playersCount > 0 ? playersCount - 1 : 0)
             );
 
-            console.log("[SCROLL] handleMomentumScrollEnd", {
-                offsetY,
-                newIndex,
-                clampedIndex,
-                currentVisibleIndex: visibleIndexRef.current,
-                playersCount,
-                willUpdate:
-                    clampedIndex !== visibleIndexRef.current &&
-                    clampedIndex >= 0 &&
-                    clampedIndex < playersCount,
-            });
+            const currentIndex = visibleIndexRef.current;
+            const diff = Math.abs(clampedIndex - currentIndex);
 
-            // Only update if valid index and different
+            // CRITICAL: Only allow adjacent changes (diff === 1) to prevent jumps
+            if (diff > 1) {
+                // Snap to adjacent position in the direction of scroll
+                const snappedIndex =
+                    clampedIndex > currentIndex
+                        ? currentIndex + 1
+                        : currentIndex - 1;
+                const finalIndex = Math.max(
+                    0,
+                    Math.min(snappedIndex, playersCount - 1)
+                );
+
+                // Check viewability for snapped position
+                const itemStart = finalIndex * screenHeight;
+                const itemEnd = itemStart + screenHeight;
+                const viewportStart = offsetY;
+                const viewportEnd = offsetY + viewportHeight;
+                const visibleStart = Math.max(itemStart, viewportStart);
+                const visibleEnd = Math.min(itemEnd, viewportEnd);
+                const visibleHeight = Math.max(0, visibleEnd - visibleStart);
+                const visiblePercent = (visibleHeight / screenHeight) * 100;
+
+                if (visiblePercent >= 50 && finalIndex !== currentIndex) {
+                    visibleIndexRef.current = finalIndex;
+                    setVisibleIndex(finalIndex);
+                }
+                return;
+            }
+
+            // Normal adjacent change - check viewability
             if (
-                clampedIndex !== visibleIndexRef.current &&
+                clampedIndex !== currentIndex &&
                 clampedIndex >= 0 &&
                 clampedIndex < playersCount
             ) {
-                visibleIndexRef.current = clampedIndex;
-                setVisibleIndex(clampedIndex);
-                console.log("[SCROLL] Updated visibleIndex", {
-                    from: visibleIndexRef.current,
-                    to: clampedIndex,
-                });
+                const itemStart = clampedIndex * screenHeight;
+                const itemEnd = itemStart + screenHeight;
+                const viewportStart = offsetY;
+                const viewportEnd = offsetY + viewportHeight;
+                const visibleStart = Math.max(itemStart, viewportStart);
+                const visibleEnd = Math.min(itemEnd, viewportEnd);
+                const visibleHeight = Math.max(0, visibleEnd - visibleStart);
+                const visiblePercent = (visibleHeight / screenHeight) * 100;
+
+                if (visiblePercent >= 50) {
+                    visibleIndexRef.current = clampedIndex;
+                    setVisibleIndex(clampedIndex);
+                }
             }
         },
         []
     );
-
-    const viewabilityConfig = useRef<ViewabilityConfig>({
-        itemVisiblePercentThreshold: 50,
-        minimumViewTime: 100,
-        waitForInteraction: false,
-    });
-
-    // Removed onViewableItemsChanged - handleMomentumScrollEnd is enough and more reliable
-
-    // Removed viewability config - using handleMomentumScrollEnd only
 
     return (
         <View style={styles.container}>
@@ -413,12 +405,11 @@ export default function App() {
                             isActive={index === visibleIndex}
                         />
                     )}
-                    keyExtractor={(item) => {
-                        const videoIndex =
-                            playerVideoIndexRef.current.get(item);
-                        return videoIndex !== undefined
-                            ? `video-${videoIndex}`
-                            : `player-${Math.random()}`;
+                    keyExtractor={(item, index) => {
+                        // CRITICAL: Use index (position in array) as key, not videoIndex
+                        // This ensures LegendList treats each position as unique,
+                        // preventing component recycling issues
+                        return `video-${index}`;
                     }}
                     getFixedItemSize={() => screenHeight}
                     estimatedItemSize={screenHeight}
@@ -430,7 +421,7 @@ export default function App() {
                     }}
                     contentContainerStyle={null}
                     horizontal={false}
-                    decelerationRate={0.98}
+                    decelerationRate={0.92}
                     snapToInterval={screenHeight}
                     snapToAlignment="start"
                     scrollEventThrottle={16}
@@ -438,40 +429,31 @@ export default function App() {
                     ItemSeparatorComponent={undefined}
                     onScroll={handleScroll}
                     showsVerticalScrollIndicator={false}
-                    recycleItems={true}
+                    recycleItems={false}
                     drawDistance={screenHeight * 3}
                     extraData={visibleIndex}
+                    viewabilityConfigCallbackPairs={
+                        viewabilityConfigCallbackPairsRef.current
+                    }
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={handleMomentumScrollEnd}
                     onEndReached={() => {
-                        // Calculate remaining videos correctly - clamp visibleIndex
-                        const currentLength = players.length;
+                        // Use playersRef.current to avoid race conditions
+                        const currentLength = playersRef.current.length;
                         const currentVisible = Math.min(
-                            visibleIndex,
+                            visibleIndexRef.current,
                             currentLength - 1
                         );
                         const remaining = currentLength - currentVisible - 1;
 
-                        console.log("[END_REACHED] onEndReached called", {
-                            remaining,
-                            currentLength,
-                            currentVisible,
-                            visibleIndex,
-                            fetching: fetchingRef.current,
-                            urisLength: uris.length,
-                        });
-
-                        // Fetch when 3 or fewer videos remain
+                        // Fetch when 2 or fewer videos remain
                         if (
-                            remaining <= 3 &&
+                            remaining <= 2 &&
                             !fetchingRef.current &&
                             uris.length > 0 &&
                             currentVisible >= 0 &&
                             currentVisible < currentLength
                         ) {
-                            console.log(
-                                "[END_REACHED] Calling fetchMoreVideos"
-                            );
                             fetchMoreVideos();
                         }
                     }}

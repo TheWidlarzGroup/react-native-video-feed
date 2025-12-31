@@ -32,39 +32,10 @@ const VideoViewComponent = ({
     const [isPlaying, setIsPlaying] = useState(player.isPlaying);
     const sourceUriRef = useRef(player.source?.uri ?? null);
     const userPausedRef = useRef(false);
-    const preloadAttemptedRef = useRef(false);
-    const timeoutRefsRef = useRef<Set<NodeJS.Timeout>>(new Set());
     const pressStartTimeRef = useRef<number | null>(null);
     const pressStartLocationRef = useRef<{ x: number; y: number } | null>(null);
-    const wasEverReadyRef = useRef(
-        player.status === "readyToPlay" ||
-            (player.source?.uri &&
-                player.status !== "idle" &&
-                player.status !== "error")
-    );
 
-    useEffect(() => {
-        if (player.status === "readyToPlay") {
-            wasEverReadyRef.current = true;
-        } else if (player.status === "error") {
-            wasEverReadyRef.current = false;
-        }
-    }, [player.status]);
-
-    useEffect(() => {
-        if (player.source?.uri) {
-            const newUri = player.source.uri;
-            if (sourceUriRef.current !== newUri) {
-                sourceUriRef.current = newUri;
-                preloadAttemptedRef.current = false;
-                if (player.status !== "readyToPlay") {
-                    wasEverReadyRef.current = false;
-                }
-            }
-        }
-    }, [player.source?.uri, player.status]);
-
-    // Sync isPlaying state more reliably
+    // Sync isPlaying state
     useEffect(() => {
         const currentPlaying = player.isPlaying;
         if (currentPlaying !== isPlaying) {
@@ -72,38 +43,27 @@ const VideoViewComponent = ({
         }
     }, [player.isPlaying, isPlaying]);
 
-    // Removed play/pause/mute logic - App.tsx syncPlaybackForIndex handles it
-    // Only update loading/error state here
     useEffect(() => {
-        if (!player) return;
-
-        if (player.status === "readyToPlay") {
-            setIsLoading(false);
-            setIsError(false);
-            wasEverReadyRef.current = true;
-        } else if (player.status === "error") {
-            setIsError(true);
-            setIsLoading(false);
-        } else if (player.status === "loading") {
-            setIsLoading(true);
-            setIsError(false);
-        } else if (player.status === "idle") {
-            if (wasEverReadyRef.current) {
-                setIsLoading(false);
-            } else {
-                setIsLoading(true);
+        if (
+            isActive &&
+            player.status === "readyToPlay" &&
+            !player.isPlaying &&
+            !userPausedRef.current
+        ) {
+            try {
+                player.muted = false;
+                player.play();
+                setIsPlaying(true);
+            } catch (e) {
+                // Ignore
             }
         }
-    }, [player.status]);
-
-    // Removed retry logic - App.tsx syncPlaybackForIndex handles preloading and playback
+    }, [isActive, player.status, player.isPlaying, index]);
 
     useEvent(player, "onLoad", () => {
         setIsLoading(false);
         setIsError(false);
         player.loop = true;
-        wasEverReadyRef.current = true;
-        // App.tsx syncPlaybackForIndex handles play/pause/mute
     });
 
     useEvent(player, "onStatusChange", () => {
@@ -112,46 +72,36 @@ const VideoViewComponent = ({
         if (currentPlaying !== isPlaying) {
             setIsPlaying(currentPlaying);
         }
+
         if (player.status === "error") {
             setIsError(true);
             setIsLoading(false);
-            preloadAttemptedRef.current = false;
         } else if (player.status === "readyToPlay") {
             setIsError(false);
             setIsLoading(false);
-            wasEverReadyRef.current = true;
-            // App.tsx syncPlaybackForIndex handles play/pause/mute
+
+            const shouldPlay =
+                isActive && !player.isPlaying && !userPausedRef.current;
+            if (shouldPlay) {
+                try {
+                    player.muted = false;
+                    player.play();
+                    setIsPlaying(true);
+                } catch (e) {
+                    // Ignore
+                }
+            }
         } else if (player.status === "idle") {
-            const likelyWasReady =
-                wasEverReadyRef.current || !!player.source?.uri;
-            if (!likelyWasReady) {
-                setIsLoading(true);
-            } else {
-                setIsLoading(false);
-                if (!wasEverReadyRef.current) {
-                    wasEverReadyRef.current = true;
-                }
-            }
+            setIsLoading(true);
         } else if (player.status === "loading") {
-            const likelyWasReady =
-                wasEverReadyRef.current || !!player.source?.uri;
-            if (!likelyWasReady) {
-                setIsLoading(true);
-                setIsError(false);
-            } else {
-                setIsLoading(false);
-                setIsError(false);
-                if (!wasEverReadyRef.current) {
-                    wasEverReadyRef.current = true;
-                }
-            }
+            setIsLoading(true);
+            setIsError(false);
         }
     });
 
     useEvent(player, "onError", () => {
         setIsError(true);
         setIsLoading(false);
-        preloadAttemptedRef.current = false;
     });
 
     return (
