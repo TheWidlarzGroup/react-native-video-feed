@@ -161,8 +161,6 @@ export default function App() {
                 return;
             }
 
-            // CRITICAL: Position in array = currentLength + newPlayers.length
-            // This ensures source matches position: 0,1,2,3,4,0,1,2,3,4...
             const positionInArray = currentLength + newPlayers.length;
             const expectedUri = uris[positionInArray % uris.length];
 
@@ -193,14 +191,13 @@ export default function App() {
                 return;
             }
 
+            // Preload 5 ahead, 1 behind (like Slop-Social)
             const preloadStart = Math.max(0, targetIndex - 1);
-            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 3);
+            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 6);
 
             currentPlayers.forEach((player, idx) => {
                 if (!player) return;
 
-                // CRITICAL: Source MUST match position in array (idx), not videoIndex
-                // This ensures correct sequential playback: 0,1,2,3,4,0,1,2,3,4...
                 const expectedUri = uris[idx % uris.length];
                 const currentUri = player.source?.uri;
 
@@ -208,46 +205,29 @@ export default function App() {
                     idx >= preloadStart && idx < preloadEnd;
                 const isActive = idx === targetIndex;
 
-                // Always ensure source matches position to maintain correct sequence
-                const sourceChanged = currentUri !== expectedUri;
-                if (sourceChanged) {
-                    try {
-                        player.replaceSourceAsync({ uri: expectedUri });
-                        preloadAttemptedRef.current.delete(player);
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
-
                 try {
                     if (isActive) {
                         if (player.muted) player.muted = false;
 
-                        // Ensure source is set first
-                        if (!player.source?.uri && expectedUri) {
+                        // Only change source if missing or different, but not if already playing
+                        const sourceChanged = currentUri !== expectedUri;
+                        if (
+                            sourceChanged &&
+                            !player.isPlaying &&
+                            player.status !== "loading"
+                        ) {
                             try {
                                 player.replaceSourceAsync({ uri: expectedUri });
                                 preloadAttemptedRef.current.delete(player);
-                                // Preload immediately after setting source
-                                const timeoutId = setTimeout(() => {
-                                    if (
-                                        player.status === "idle" &&
-                                        player.source?.uri === expectedUri &&
-                                        !preloadAttemptedRef.current.has(player)
-                                    ) {
-                                        safePreload(player);
-                                    }
-                                }, 50);
-                                timeoutRefsRef.current.add(timeoutId);
-                            } catch (e) {
-                                // Ignore
-                            }
-                        } else if (
+                            } catch (e) {}
+                        }
+
+                        // Preload if idle and source is set
+                        if (
                             player.status === "idle" &&
                             player.source?.uri &&
                             !preloadAttemptedRef.current.has(player)
                         ) {
-                            // Preload immediately if idle and source is set
                             safePreload(player);
                         }
 
@@ -262,19 +242,21 @@ export default function App() {
                         if (player.isPlaying) player.pause();
                         if (!player.muted) player.muted = true;
 
-                        if (sourceChanged) {
-                            // Preload after source change with minimal delay
-                            const timeoutId = setTimeout(() => {
-                                if (
-                                    player.status === "idle" &&
-                                    player.source?.uri &&
-                                    !preloadAttemptedRef.current.has(player)
-                                ) {
-                                    safePreload(player);
-                                }
-                            }, 50);
-                            timeoutRefsRef.current.add(timeoutId);
-                        } else {
+                        // Only change source if different and not loading
+                        const sourceChanged = currentUri !== expectedUri;
+                        if (sourceChanged && player.status !== "loading") {
+                            try {
+                                player.replaceSourceAsync({ uri: expectedUri });
+                                preloadAttemptedRef.current.delete(player);
+                            } catch (e) {}
+                        }
+
+                        // Preload if idle and source is set
+                        if (
+                            player.status === "idle" &&
+                            player.source?.uri &&
+                            !preloadAttemptedRef.current.has(player)
+                        ) {
                             safePreload(player);
                         }
                     } else {
@@ -338,17 +320,11 @@ export default function App() {
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             const offsetY = e.nativeEvent.contentOffset.y;
             const playersCount = playersRef.current.length;
+            const index = Math.round(offsetY / screenHeight);
+            const clampedIndex = Math.max(0, Math.min(index, playersCount - 1));
 
-            const exactIndex = Math.round(offsetY / screenHeight);
-            const clampedIndex = Math.max(
-                0,
-                Math.min(exactIndex, playersCount > 0 ? playersCount - 1 : 0)
-            );
-
-            const currentIndex = visibleIndexRef.current;
             if (
-                clampedIndex !== currentIndex &&
-                clampedIndex >= 0 &&
+                clampedIndex !== visibleIndexRef.current &&
                 clampedIndex < playersCount
             ) {
                 visibleIndexRef.current = clampedIndex;
@@ -387,9 +363,6 @@ export default function App() {
                         />
                     )}
                     keyExtractor={(item, index) => {
-                        // CRITICAL: Use index (position in array) as key, not videoIndex
-                        // This ensures LegendList treats each position as unique,
-                        // preventing component recycling issues
                         return `video-${index}`;
                     }}
                     getFixedItemSize={() => screenHeight}
@@ -398,16 +371,14 @@ export default function App() {
                     style={{
                         width: screenWidth,
                         height: screenHeight,
-                        overflow: "hidden",
                     }}
-                    contentContainerStyle={null}
                     horizontal={false}
-                    decelerationRate={0.98}
+                    pagingEnabled={true}
                     snapToInterval={screenHeight}
                     snapToAlignment="start"
-                    snapToOffsets={undefined}
+                    decelerationRate="fast"
                     scrollEventThrottle={16}
-                    disableIntervalMomentum={true}
+                    bounces={false}
                     showsVerticalScrollIndicator={false}
                     recycleItems={false}
                     drawDistance={screenHeight * 3}

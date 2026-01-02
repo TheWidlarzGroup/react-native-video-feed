@@ -35,7 +35,6 @@ const VideoViewComponent = ({
     const pressStartTimeRef = useRef<number | null>(null);
     const pressStartLocationRef = useRef<{ x: number; y: number } | null>(null);
 
-    // Sync source URI ref to prevent flicker when source changes
     useEffect(() => {
         const currentUri = player.source?.uri ?? null;
         if (currentUri !== sourceUriRef.current) {
@@ -43,7 +42,6 @@ const VideoViewComponent = ({
         }
     }, [player.source?.uri]);
 
-    // Sync isPlaying state
     useEffect(() => {
         const currentPlaying = player.isPlaying;
         if (currentPlaying !== isPlaying) {
@@ -75,7 +73,6 @@ const VideoViewComponent = ({
     });
 
     useEvent(player, "onStatusChange", () => {
-        // Always sync isPlaying state from player
         const currentPlaying = player.isPlaying;
         if (currentPlaying !== isPlaying) {
             setIsPlaying(currentPlaying);
@@ -88,7 +85,6 @@ const VideoViewComponent = ({
             setIsError(false);
             setIsLoading(false);
 
-            // Always try to play if active and not user-paused
             if (isActive && !userPausedRef.current) {
                 if (!player.isPlaying) {
                     try {
