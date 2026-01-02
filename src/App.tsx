@@ -204,7 +204,11 @@ export default function App() {
                 const expectedUri = uris[idx % uris.length];
                 const currentUri = player.source?.uri;
 
-                // Always set source based on position - this fixes incorrect sequences
+                const isInPreloadRange =
+                    idx >= preloadStart && idx < preloadEnd;
+                const isActive = idx === targetIndex;
+
+                // Always ensure source matches position to maintain correct sequence
                 const sourceChanged = currentUri !== expectedUri;
                 if (sourceChanged) {
                     try {
@@ -215,13 +219,39 @@ export default function App() {
                     }
                 }
 
-                const isInPreloadRange =
-                    idx >= preloadStart && idx < preloadEnd;
-                const isActive = idx === targetIndex;
-
                 try {
                     if (isActive) {
                         if (player.muted) player.muted = false;
+
+                        // Ensure source is set first
+                        if (!player.source?.uri && expectedUri) {
+                            try {
+                                player.replaceSourceAsync({ uri: expectedUri });
+                                preloadAttemptedRef.current.delete(player);
+                                // Preload immediately after setting source
+                                const timeoutId = setTimeout(() => {
+                                    if (
+                                        player.status === "idle" &&
+                                        player.source?.uri === expectedUri &&
+                                        !preloadAttemptedRef.current.has(player)
+                                    ) {
+                                        safePreload(player);
+                                    }
+                                }, 50);
+                                timeoutRefsRef.current.add(timeoutId);
+                            } catch (e) {
+                                // Ignore
+                            }
+                        } else if (
+                            player.status === "idle" &&
+                            player.source?.uri &&
+                            !preloadAttemptedRef.current.has(player)
+                        ) {
+                            // Preload immediately if idle and source is set
+                            safePreload(player);
+                        }
+
+                        // Play if ready
                         if (
                             player.status === "readyToPlay" &&
                             !player.isPlaying
@@ -233,9 +263,16 @@ export default function App() {
                         if (!player.muted) player.muted = true;
 
                         if (sourceChanged) {
+                            // Preload after source change with minimal delay
                             const timeoutId = setTimeout(() => {
-                                safePreload(player);
-                            }, 150);
+                                if (
+                                    player.status === "idle" &&
+                                    player.source?.uri &&
+                                    !preloadAttemptedRef.current.has(player)
+                                ) {
+                                    safePreload(player);
+                                }
+                            }, 50);
                             timeoutRefsRef.current.add(timeoutId);
                         } else {
                             safePreload(player);
@@ -365,9 +402,10 @@ export default function App() {
                     }}
                     contentContainerStyle={null}
                     horizontal={false}
-                    decelerationRate={0.92}
+                    decelerationRate={0.98}
                     snapToInterval={screenHeight}
                     snapToAlignment="start"
+                    snapToOffsets={undefined}
                     scrollEventThrottle={16}
                     disableIntervalMomentum={true}
                     showsVerticalScrollIndicator={false}
