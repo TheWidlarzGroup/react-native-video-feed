@@ -338,7 +338,7 @@ export default function App() {
 
     const handleScroll = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            // Only track scroll position, don't update visibleIndex here
+            // Only track scroll position, don't interfere with scrolling
             // onViewableItemsChanged handles real-time viewability updates
         },
         []
