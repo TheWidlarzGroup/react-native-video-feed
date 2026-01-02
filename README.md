@@ -1,6 +1,6 @@
 # React Native Video v7 TikTok-Style Feed Example
 
-A high-performance TikTok-style vertical video feed built with React Native Video v7, featuring smooth infinite scroll, aggressive preloading, and optimized playback controls.
+A high-performance TikTok-style vertical video feed built with React Native Video v7 and `@legendapp/list`, featuring smooth infinite scroll, automatic snapping, aggressive preloading, and optimized playback controls.
 
 ## Features
 
@@ -9,21 +9,22 @@ A high-performance TikTok-style vertical video feed built with React Native Vide
 -   **HLS Stream Support**: Uses Mux HLS streams for adaptive bitrate streaming
 -   **Smooth Transitions**: Videos start playing when 50% visible for faster engagement
 -   **Infinite Scroll**: Seamlessly cycles through videos infinitely using modulo indexing
--   **One-by-One Scrolling**: Enforced single-step scrolling prevents multi-video jumps
--   **Scroll Blocking**: Timeout-based scroll blocking prevents rapid scrolling issues
+-   **Automatic Snapping**: `snapToInterval` ensures videos always align perfectly after scroll
+-   **Fast Scrolling**: Optimized `decelerationRate` for responsive, smooth scrolling
 
 ### ⚡ Performance Optimizations
 
--   **Aggressive Preloading**: Preloads 4 videos ahead and 4 behind for instant playback
+-   **Aggressive Preloading**: Preloads videos ahead and behind for instant playback
 -   **Zero-Rerender Cleanup**: Background resource cleanup without array modifications
--   **Optimized Rendering**: FlatList with proper windowing, clipping, and memoization
+-   **Optimized Rendering**: LegendList with proper windowing, clipping, and memoization
 -   **Memory Management**: Automatic cleanup of video resources beyond viewport
 -   **Smart Preload Tracking**: Prevents duplicate preload attempts
+-   **Component Recycling Disabled**: `recycleItems={false}` ensures correct video order
 
 ### 🎨 UI/UX
 
 -   **Animated Overlays**: UI elements (likes, comments, share) fade in smoothly
--   **Loading States**: Proper loading indicators during video buffering
+-   **Loading States**: Proper loading indicators during video buffering (only when active)
 -   **Error Handling**: Graceful error recovery with retry mechanisms
 -   **Tap-to-Play/Pause**: Distinguishes taps from swipes for better UX
 -   **Seamless Scrolling**: No flicker or jumps during navigation
@@ -34,15 +35,16 @@ A high-performance TikTok-style vertical video feed built with React Native Vide
 
 The app implements a true infinite feed pattern:
 
-1. **Unique Index Tracking**: Each video player instance gets a unique index in history (`playerVideoIndexRef`)
+1. **Position-Based Indexing**: Each video player uses its array position (`index`) to determine which source URI to play
 
-    - Initial videos: indices 0-4
-    - New videos: indices 5, 6, 7, 8... (infinite)
     - Uses modulo to cycle through source videos: `uris[index % uris.length]`
+    - Ensures correct order: 1-2-3-4-5, 1-2-3-4-5, etc.
 
-2. **Stable Keys**: `keyExtractor` uses unique historical indices, ensuring FlatList treats each instance as distinct even when reusing source URIs
+2. **Stable Keys**: `keyExtractor` uses array position (`index`), ensuring LegendList treats each position as unique
 
 3. **Proactive Fetching**: When ≤3 videos remain before end, automatically fetches 2-3 more videos ahead
+
+4. **No Component Recycling**: `recycleItems={false}` prevents component reuse issues that could cause incorrect video order
 
 ### Preloading Strategy
 
@@ -72,15 +74,17 @@ Instead of removing players from the array (which causes rerenders), the cleanup
 
 3. **Benefits**: No rerenders, no flicker, no `visibleIndex` changes, seamless user experience
 
-### Scroll Control & One-by-One Navigation
+### Scroll Control & Snapping
 
-**Enforced Single-Step Scrolling:**
+**Automatic Snapping:**
 
-1. **Scroll Blocking**: After each scroll, blocks further scrolling for 200ms using `scrollBlockedRef` and `scrollEnabled` state
+1. **Snap to Interval**: `snapToInterval={screenHeight}` ensures videos always snap to exact positions after scroll
 
-2. **One-by-One Validation**: All scroll handlers check `diff === 1`. If user tries to jump multiple videos, snaps back to next/previous video only
+2. **Fast Deceleration**: `decelerationRate={0.92}` provides responsive, smooth scrolling
 
-3. **FlatList Configuration**: Uses `disableIntervalMomentum={true}` and `decelerationRate={0.95}` for controlled scrolling
+3. **Viewability Detection**: 50% viewability threshold triggers video playback when video is half-visible
+
+4. **LegendList Configuration**: Uses `disableIntervalMomentum={true}`, `snapToAlignment="start"`, and `recycleItems={false}` for reliable scrolling
 
 ### Tap vs Swipe Detection
 
@@ -99,14 +103,15 @@ Uses `onPressIn`/`onPressOut` to distinguish taps from swipes:
 
 ### Performance Optimizations
 
-**FlatList Configuration:**
+**LegendList Configuration:**
 
--   `removeClippedSubviews: true` - Unmounts off-screen items
--   `windowSize: 5` - Renders 5 screens worth
--   `maxToRenderPerBatch: 2` - Renders 2 items per batch
+-   `recycleItems: false` - Prevents component recycling issues (critical for correct video order)
+-   `drawDistance: screenHeight * 3` - Renders 3 screens worth
 -   `scrollEventThrottle: 16` - 60fps scroll events
 -   `disableIntervalMomentum: true` - Prevents multi-item jumps
--   `decelerationRate: 0.95` - Controlled deceleration
+-   `decelerationRate: 0.92` - Fast, responsive scrolling
+-   `snapToInterval: screenHeight` - Automatic snapping to video boundaries
+-   `snapToAlignment: "start"` - Aligns snap to start of each video
 
 **React Optimizations:**
 
@@ -133,10 +138,10 @@ Uses `onPressIn`/`onPressOut` to distinguish taps from swipes:
 ### Scroll Flow
 
 1. User scrolls, `handleScroll` tracks position
-2. `onViewableItemsChanged` detects when video is 50% visible
-3. Updates `visibleIndex` only if `diff === 1`
-4. `syncPlaybackForIndex` plays current, pauses others, preloads nearby
-5. After scroll ends, blocks for 200ms
+2. `onViewableItemsChanged` detects when video is 50% visible and updates `visibleIndex`
+3. `syncPlaybackForIndex` plays current, pauses others, preloads nearby
+4. `snapToInterval` automatically snaps to exact video position when scroll ends
+5. `handleMomentumScrollEnd` finalizes the visible index
 6. If ≤3 videos remain, fetches more
 
 ### Cleanup Flow
@@ -159,8 +164,8 @@ Manages video player pool, infinite scroll, scroll events, preloading, cleanup, 
 -   `fetchMoreVideos()`: Creates new players for infinite scroll
 -   `syncPlaybackForIndex()`: Manages playback for current and nearby videos
 -   `safePreload()`: Safe preload with duplicate prevention
--   `handleScroll()`: Tracks scroll position with one-by-one validation
--   `handleMomentumScrollEnd()`: Finalizes scroll with blocking
+-   `handleScroll()`: Tracks scroll position
+-   `handleMomentumScrollEnd()`: Finalizes visible index after scroll ends
 
 ### `VideoViewComponent.tsx`
 
@@ -196,10 +201,18 @@ export const SOURCES = [
 In `src/App.tsx`:
 
 ```typescript
-const PLAYERS_AROUND_VIEWPORT = 4; // Preload distance (4 ahead, 4 behind)
-const CLEANUP_THRESHOLD = 5; // Scrolls before cleanup runs
-const MAX_PLAYERS_BEFORE_CLEANUP = 15; // Trigger cleanup when this many players exist
-const SCROLL_BLOCK_TIMEOUT = 200; // Milliseconds to block scroll after scroll ends
+// LegendList configuration
+<LegendList
+    decelerationRate={0.92} // Adjust scroll speed (lower = faster)
+    snapToInterval={screenHeight} // Snap distance
+    drawDistance={screenHeight * 3} // Render distance
+    recycleItems={false} // Keep false for correct video order
+/>
+
+// Viewability threshold
+const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50, // Adjust when videos start playing
+};
 ```
 
 ## Installation
@@ -229,10 +242,12 @@ bun run android
 ### Infinite Scroll Implementation
 
 ```typescript
-// Unique index tracking
-const nextVideoIndex = totalVideoCountRef.current; // 5, 6, 7, 8...
-const nextUri = uris[nextVideoIndex % uris.length]; // Cycles: 0,1,2,3,4,0,1,2...
-playerVideoIndexRef.current.set(newPlayer, nextVideoIndex); // Unique key
+// Position-based indexing
+const positionInArray = playersRef.current.length; // Current array length
+const expectedUri = uris[positionInArray % uris.length]; // Cycles: 0,1,2,3,4,0,1,2...
+
+// Key extractor uses array position
+keyExtractor={(item, index) => `video-${index}`}
 
 // Proactive fetching
 if (remaining <= 3 && !fetchingRef.current) {
@@ -278,26 +293,26 @@ const cleanupOldPlayers = () => {
 ### Scroll Control Implementation
 
 ```typescript
-// One-by-one validation
-const diff = Math.abs(clampedIndex - visibleIndexRef.current);
-if (diff === 1) {
-    setVisibleIndex(clampedIndex);
-} else {
-    const targetIndex =
-        clampedIndex > visibleIndexRef.current
-            ? visibleIndexRef.current + 1
-            : visibleIndexRef.current - 1;
-    setVisibleIndex(targetIndex);
-    scrollToOffset(targetIndex * screenHeight);
-}
+// Automatic snapping with LegendList
+<LegendList
+    snapToInterval={screenHeight}
+    snapToAlignment="start"
+    decelerationRate={0.92}
+    disableIntervalMomentum={true}
+    recycleItems={false} // Critical for correct video order
+/>
 
-// Scroll blocking
-scrollBlockedRef.current = true;
-setScrollEnabled(false);
-setTimeout(() => {
-    scrollBlockedRef.current = false;
-    setScrollEnabled(true);
-}, SCROLL_BLOCK_TIMEOUT);
+// Viewability detection
+const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50, // Play when 50% visible
+};
+
+// Finalize index after scroll
+const handleMomentumScrollEnd = (e) => {
+    const offsetY = e.nativeEvent.contentOffset.y;
+    const exactIndex = Math.round(offsetY / screenHeight);
+    setVisibleIndex(exactIndex);
+};
 ```
 
 ## Performance Monitoring

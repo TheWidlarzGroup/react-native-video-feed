@@ -36,15 +36,12 @@ export default function App() {
     const rafRefsRef = useRef<Set<number>>(new Set());
 
     const safePreload = useCallback((player: VideoPlayer) => {
-        if (!player) return false;
-
-        if (preloadAttemptedRef.current.has(player)) {
-            if (player.status !== "idle") {
-                return false;
-            }
-        }
-
-        if (player.status !== "idle" || !player.source?.uri) {
+        if (
+            !player ||
+            player.status !== "idle" ||
+            !player.source?.uri ||
+            preloadAttemptedRef.current.has(player)
+        ) {
             return false;
         }
 
@@ -142,15 +139,15 @@ export default function App() {
                     newPlayers.forEach((player) => {
                         const rafId = requestAnimationFrame(() => {
                             const checkAndPreload = () => {
-                                if (
-                                    player.source?.uri &&
-                                    player.status === "idle"
-                                ) {
-                                    safePreload(player);
-                                } else if (player.source?.uri) {
-                                    setTimeout(checkAndPreload, 50);
-                                } else {
-                                    setTimeout(checkAndPreload, 50);
+                                if (safePreload(player)) {
+                                    return;
+                                }
+                                if (player.source?.uri) {
+                                    const timeoutId = setTimeout(
+                                        checkAndPreload,
+                                        100
+                                    );
+                                    timeoutRefsRef.current.add(timeoutId);
                                 }
                             };
                             checkAndPreload();
@@ -197,7 +194,7 @@ export default function App() {
             }
 
             const preloadStart = Math.max(0, targetIndex - 1);
-            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 6);
+            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 3);
 
             currentPlayers.forEach((player, idx) => {
                 if (!player) return;
@@ -226,13 +223,6 @@ export default function App() {
                     if (isActive) {
                         if (player.muted) player.muted = false;
                         if (
-                            player.status === "idle" &&
-                            player.source?.uri &&
-                            !preloadAttemptedRef.current.has(player)
-                        ) {
-                            safePreload(player);
-                        }
-                        if (
                             player.status === "readyToPlay" &&
                             !player.isPlaying
                         ) {
@@ -242,42 +232,13 @@ export default function App() {
                         if (player.isPlaying) player.pause();
                         if (!player.muted) player.muted = true;
 
-                        // Preload if source is set and player is ready
-                        if (player.source?.uri) {
-                            if (
-                                player.status === "idle" &&
-                                !preloadAttemptedRef.current.has(player)
-                            ) {
-                                // If source was just changed, wait a bit for it to settle
-                                if (sourceChanged) {
-                                    setTimeout(() => {
-                                        if (
-                                            player.status === "idle" &&
-                                            player.source?.uri
-                                        ) {
-                                            safePreload(player);
-                                        }
-                                    }, 100);
-                                } else {
-                                    safePreload(player);
-                                }
-                            } else if (
-                                player.status === "loading" &&
-                                !preloadAttemptedRef.current.has(player)
-                            ) {
-                                // Wait for loading to complete, then preload
-                                const checkStatus = () => {
-                                    if (
-                                        player.status === "idle" &&
-                                        player.source?.uri
-                                    ) {
-                                        safePreload(player);
-                                    } else if (player.status === "loading") {
-                                        setTimeout(checkStatus, 50);
-                                    }
-                                };
-                                setTimeout(checkStatus, 50);
-                            }
+                        if (sourceChanged) {
+                            const timeoutId = setTimeout(() => {
+                                safePreload(player);
+                            }, 150);
+                            timeoutRefsRef.current.add(timeoutId);
+                        } else {
+                            safePreload(player);
                         }
                     } else {
                         if (player.isPlaying) player.pause();
@@ -335,14 +296,6 @@ export default function App() {
             },
         },
     ]);
-
-    const handleScroll = useCallback(
-        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            // Only track scroll position, don't interfere with scrolling
-            // onViewableItemsChanged handles real-time viewability updates
-        },
-        []
-    );
 
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -417,8 +370,6 @@ export default function App() {
                     snapToAlignment="start"
                     scrollEventThrottle={16}
                     disableIntervalMomentum={true}
-                    ItemSeparatorComponent={undefined}
-                    onScroll={handleScroll}
                     showsVerticalScrollIndicator={false}
                     recycleItems={false}
                     drawDistance={screenHeight * 3}
@@ -429,21 +380,15 @@ export default function App() {
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={handleMomentumScrollEnd}
                     onEndReached={() => {
-                        // Use playersRef.current to avoid race conditions
                         const currentLength = playersRef.current.length;
-                        const currentVisible = Math.min(
-                            visibleIndexRef.current,
-                            currentLength - 1
-                        );
+                        const currentVisible = visibleIndexRef.current;
                         const remaining = currentLength - currentVisible - 1;
 
-                        // Fetch when 2 or fewer videos remain
                         if (
                             remaining <= 2 &&
                             !fetchingRef.current &&
                             uris.length > 0 &&
-                            currentVisible >= 0 &&
-                            currentVisible < currentLength
+                            currentLength > 0
                         ) {
                             fetchMoreVideos();
                         }
