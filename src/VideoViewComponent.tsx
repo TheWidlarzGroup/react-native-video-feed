@@ -42,6 +42,18 @@ const VideoViewComponent = ({
                 player.status !== "idle" &&
                 player.status !== "error")
     );
+    // TTFF tracking
+    const viewportEntryTimeRef = useRef<number | null>(null);
+    const ttffMeasuredRef = useRef(false);
+    const firstProgressCallbackRef = useRef(true);
+    // FPS Stability tracking
+    const fpsTrackingActiveRef = useRef(false);
+    const expectedFpsRef = useRef(60); // Assume 60 FPS, can be adjusted
+    const progressCallbacksRef = useRef<number[]>([]);
+    const lastProgressTimeRef = useRef<number | null>(null);
+    const rafFrameCountRef = useRef(0);
+    const rafStartTimeRef = useRef<number | null>(null);
+    const rafIdRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (player.status === "readyToPlay") {
@@ -60,6 +72,20 @@ const VideoViewComponent = ({
                 if (player.status !== "readyToPlay") {
                     wasEverReadyRef.current = false;
                 }
+                // Reset TTFF tracking when video source changes
+                ttffMeasuredRef.current = false;
+                viewportEntryTimeRef.current = null;
+                firstProgressCallbackRef.current = true;
+                // Reset FPS tracking
+                fpsTrackingActiveRef.current = false;
+                progressCallbacksRef.current = [];
+                lastProgressTimeRef.current = null;
+                rafFrameCountRef.current = 0;
+                rafStartTimeRef.current = null;
+                if (rafIdRef.current !== null) {
+                    cancelAnimationFrame(rafIdRef.current);
+                    rafIdRef.current = null;
+                }
             }
         }
     }, [player.source?.uri, player.status]);
@@ -71,6 +97,14 @@ const VideoViewComponent = ({
     useEffect(() => {
         if (!player) return;
         if (isActive) {
+            // Track viewport entry time for TTFF measurement
+            // Set entry time when video becomes active (enters viewport)
+            if (!viewportEntryTimeRef.current && !ttffMeasuredRef.current) {
+                viewportEntryTimeRef.current = performance.now();
+                // Reset first progress flag to ensure we catch the first frame
+                firstProgressCallbackRef.current = true;
+            }
+
             try {
                 if (player.muted === true) player.muted = false;
 
@@ -90,7 +124,6 @@ const VideoViewComponent = ({
                     if (!wasEverReadyRef.current) {
                         setIsLoading(true);
                         try {
-                            performanceMonitor.startMark(`video_load_${index}`);
                             player.preload();
                             preloadAttemptedRef.current = true;
                         } catch (e) {
@@ -114,6 +147,28 @@ const VideoViewComponent = ({
                 // Ignore
             }
         } else {
+            // Reset TTFF tracking when video leaves viewport
+            if (!isActive) {
+                ttffMeasuredRef.current = false;
+                viewportEntryTimeRef.current = null;
+                firstProgressCallbackRef.current = true;
+                // Stop FPS tracking when video is not active
+                fpsTrackingActiveRef.current = false;
+                progressCallbacksRef.current = [];
+                lastProgressTimeRef.current = null;
+                if (rafIdRef.current !== null) {
+                    cancelAnimationFrame(rafIdRef.current);
+                    rafIdRef.current = null;
+                }
+            } else if (isActive && player.isPlaying) {
+                // Start FPS tracking when video becomes active and playing
+                fpsTrackingActiveRef.current = true;
+                if (rafStartTimeRef.current === null) {
+                    rafStartTimeRef.current = performance.now();
+                    rafFrameCountRef.current = 0;
+                }
+            }
+
             try {
                 if (player.isPlaying) {
                     player.pause();
@@ -251,6 +306,141 @@ const VideoViewComponent = ({
         setIsLoading(false);
         preloadAttemptedRef.current = false;
     });
+
+    // Track TTFF and FPS Stability: measure time from viewport entry to first frame
+    useEvent(player, "onProgress", () => {
+        const currentTime = performance.now();
+
+        // Only measure TTFF once per video and when video is playing
+        // TTFF = time from viewport entry to first frame displayed
+        // Skip first video (index 0) as it has initial load overhead
+        if (
+            index > 0 &&
+            !ttffMeasuredRef.current &&
+            viewportEntryTimeRef.current !== null &&
+            isActive &&
+            player.isPlaying &&
+            firstProgressCallbackRef.current &&
+            player.status === "readyToPlay"
+        ) {
+            const firstFrameTime = currentTime;
+            const ttff = firstFrameTime - viewportEntryTimeRef.current;
+
+            if (ttff > 0 && ttff < 10000) {
+                // Sanity check: TTFF should be positive and less than 10 seconds
+                performanceMonitor.recordMetric("ttff", ttff, {
+                    index,
+                    preloaded: preloadAttemptedRef.current ? 1 : 0,
+                });
+
+                ttffMeasuredRef.current = true;
+            }
+            firstProgressCallbackRef.current = false;
+        } else if (index === 0) {
+            // Skip TTFF measurement for first video, but still mark as measured to avoid tracking
+            firstProgressCallbackRef.current = false;
+        }
+
+        // Track FPS Stability: measure progress callback frequency
+        // Track whenever video is active and playing (don't require fpsTrackingActiveRef)
+        // Reduced frequency to avoid performance impact
+        if (isActive && player.isPlaying && progressCallbacksRef.current.length % 2 === 0) {
+            progressCallbacksRef.current.push(currentTime);
+
+            // Keep only last 5 seconds of data (reduced from 10)
+            const fiveSecondsAgo = currentTime - 5000;
+            progressCallbacksRef.current = progressCallbacksRef.current.filter(
+                (time) => time > fiveSecondsAgo
+            );
+
+            // Calculate expected vs actual progress callbacks
+            // onProgress is called ~4 times per second (every ~250ms)
+            // So we can estimate frame drops based on callback frequency
+            if (progressCallbacksRef.current.length >= 4) {
+                const timeSpan =
+                    progressCallbacksRef.current[
+                        progressCallbacksRef.current.length - 1
+                    ] -
+                    progressCallbacksRef.current[0];
+                const actualCallbacks = progressCallbacksRef.current.length - 1;
+                const expectedCallbacks = (timeSpan / 250) * 4; // 4 callbacks per second
+                const callbackDropRate =
+                    Math.max(0, (expectedCallbacks - actualCallbacks) / expectedCallbacks) *
+                    100;
+
+                // Frame drops are already included in fps_stability metadata
+                // No need for separate frame_drops metric
+            }
+
+            lastProgressTimeRef.current = currentTime;
+        }
+    });
+
+    // Track actual FPS using requestAnimationFrame
+    useEffect(() => {
+        // Only track when video is active and playing
+        if (!isActive || !player.isPlaying) {
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+                rafIdRef.current = null;
+            }
+            fpsTrackingActiveRef.current = false;
+            return;
+        }
+
+        // Start FPS tracking
+        fpsTrackingActiveRef.current = true;
+        let frameCount = 0;
+        let startTime = performance.now();
+
+        const measureFps = () => {
+            // Check if still active
+            if (!isActive || !player.isPlaying || !fpsTrackingActiveRef.current) {
+                fpsTrackingActiveRef.current = false;
+                return;
+            }
+
+            frameCount++;
+            const currentTime = performance.now();
+            const elapsed = currentTime - startTime;
+
+            // Measure FPS every 3 seconds (reduced frequency to save memory)
+            if (elapsed >= 3000) {
+                const actualFps = (frameCount / elapsed) * 1000;
+                const expectedFps = expectedFpsRef.current;
+                const fpsDropRate =
+                    Math.max(0, ((expectedFps - actualFps) / expectedFps) * 100);
+
+                // Only record if there's a significant drop (>5%) to reduce data
+                if (fpsDropRate > 5 || actualFps < expectedFps * 0.9) {
+                    performanceMonitor.recordMetric("fps_stability", actualFps, {
+                        index,
+                        fpsDropRate: fpsDropRate.toFixed(1),
+                    });
+                }
+
+                // Reset for next measurement
+                frameCount = 0;
+                startTime = currentTime;
+            }
+
+            // Continue tracking
+            if (fpsTrackingActiveRef.current && isActive && player.isPlaying) {
+                rafIdRef.current = requestAnimationFrame(measureFps);
+            }
+        };
+
+        // Start measurement
+        rafIdRef.current = requestAnimationFrame(measureFps);
+
+        return () => {
+            fpsTrackingActiveRef.current = false;
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+                rafIdRef.current = null;
+            }
+        };
+    }, [isActive, player.isPlaying, index]);
 
     return (
         <View

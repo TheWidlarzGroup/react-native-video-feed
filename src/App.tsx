@@ -26,9 +26,9 @@ import { performanceMonitor } from "./performance";
 import PerformanceMonitor from "./PerformanceMonitor";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
-const PLAYERS_AROUND_VIEWPORT = 4;
-const CLEANUP_THRESHOLD = 5;
-const MAX_PLAYERS_BEFORE_CLEANUP = 15;
+const PLAYERS_AROUND_VIEWPORT = 2;
+const CLEANUP_THRESHOLD = 3;
+const MAX_PLAYERS_BEFORE_CLEANUP = 8;
 const SCROLL_BLOCK_TIMEOUT = 200;
 
 export default function App() {
@@ -50,6 +50,24 @@ export default function App() {
     const scrollBlockedRef = useRef(false);
     const scrollBlockTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [scrollEnabled, setScrollEnabled] = useState(true);
+    // Scroll responsiveness tracking
+    const lastScrollTimestampRef = useRef<number | null>(null);
+    const scrollLagTrackingActiveRef = useRef(false);
+    const scrollStartIndexRef = useRef<number | null>(null);
+    const scrollStartOffsetRef = useRef<number | null>(null);
+    const lastScrollOffsetRef = useRef<number | null>(null);
+    const rafFrameCountRef = useRef(0);
+    const rafStartTimeRef = useRef<number | null>(null);
+    // Memory usage tracking (simplified - tracks player count as proxy)
+    const memoryTrackingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Helper to ensure timeoutRefsRef is always initialized
+    const ensureTimeoutRefs = () => {
+        if (!timeoutRefsRef.current) {
+            timeoutRefsRef.current = new Set();
+        }
+        return timeoutRefsRef.current;
+    };
 
     const cleanupOldPlayers = useCallback(() => {
         if (isCleaningUpRef.current) {
@@ -70,7 +88,7 @@ export default function App() {
             return;
         }
 
-        const cleanupDistance = PLAYERS_AROUND_VIEWPORT * 2;
+        const cleanupDistance = PLAYERS_AROUND_VIEWPORT * 2; // Keep 4 players around (2 before + current + 2 after)
 
         currentPlayers.forEach((player, idx) => {
             if (!player) return;
@@ -82,8 +100,13 @@ export default function App() {
                     if (player.isPlaying) {
                         player.pause();
                     }
+                    // More aggressive cleanup - clear source to free memory
                     if (player.source?.uri) {
                         player.replaceSourceAsync(null);
+                    }
+                    // Also mute to reduce processing
+                    if (player.muted !== true) {
+                        player.muted = true;
                     }
                 } catch (e) {
                     // Ignore
@@ -142,25 +165,33 @@ export default function App() {
                             safePreload(player);
                         }
                     }, idx * 50);
-                    timeoutRefsRef.current.add(preloadTimeout);
+                    ensureTimeoutRefs().add(preloadTimeout);
                 });
             }, 100);
-            timeoutRefsRef.current.add(mainTimeout);
+            ensureTimeoutRefs().add(mainTimeout);
         } catch (e) {
             setIsBooting(false);
         }
 
         return () => {
-            timeoutRefsRef.current.forEach((timeoutId) => {
-                clearTimeout(timeoutId);
-            });
-            timeoutRefsRef.current.clear();
+            if (timeoutRefsRef.current) {
+                timeoutRefsRef.current.forEach((timeoutId) => {
+                    clearTimeout(timeoutId);
+                });
+                // Re-initialize instead of clear to prevent undefined errors
+                timeoutRefsRef.current = new Set();
+            }
 
             if (scrollBlockTimeoutRef.current) {
                 clearTimeout(scrollBlockTimeoutRef.current);
                 scrollBlockTimeoutRef.current = null;
             }
             scrollBlockedRef.current = false;
+
+            if (memoryTrackingIntervalRef.current) {
+                clearInterval(memoryTrackingIntervalRef.current);
+                memoryTrackingIntervalRef.current = null;
+            }
 
             rafRefsRef.current.forEach((rafId) => {
                 cancelAnimationFrame(rafId);
@@ -221,7 +252,7 @@ export default function App() {
                         fetchingRef.current = false;
                     }
                 }, 100);
-                timeoutRefsRef.current.add(preloadTimeout);
+                ensureTimeoutRefs().add(preloadTimeout);
 
                 return nextPlayers;
             });
@@ -250,8 +281,11 @@ export default function App() {
             const wasReady = targetPlayer.status === "readyToPlay";
             const preloadCount = Array.from(currentPlayers)
                 .slice(
-                    Math.max(0, targetIndex - 4),
-                    Math.min(currentPlayers.length, targetIndex + 5)
+                    Math.max(0, targetIndex - PLAYERS_AROUND_VIEWPORT),
+                    Math.min(
+                        currentPlayers.length,
+                        targetIndex + PLAYERS_AROUND_VIEWPORT + 1
+                    )
                 )
                 .filter(
                     (p) =>
@@ -265,7 +299,7 @@ export default function App() {
 
                 const distance = Math.abs(idx - targetIndex);
 
-                if (distance <= 4 && player.source?.uri) {
+                if (distance <= PLAYERS_AROUND_VIEWPORT && player.source?.uri) {
                     if (
                         player.status === "idle" &&
                         !preloadAttemptedRef.current.has(player)
@@ -328,11 +362,18 @@ export default function App() {
 
         const remaining = currentPlayers.length - currentIndex;
 
+        // More aggressive cleanup - run cleanup more frequently
         if (currentPlayers.length > MAX_PLAYERS_BEFORE_CLEANUP) {
             const cleanupTimeout = setTimeout(() => {
                 cleanupOldPlayers();
-            }, 100);
-            timeoutRefsRef.current.add(cleanupTimeout);
+            }, 50); // Faster cleanup
+            ensureTimeoutRefs().add(cleanupTimeout);
+        } else if (currentPlayers.length > MAX_PLAYERS_BEFORE_CLEANUP - 2) {
+            // Proactive cleanup when approaching limit
+            const cleanupTimeout = setTimeout(() => {
+                cleanupOldPlayers();
+            }, 200);
+            ensureTimeoutRefs().add(cleanupTimeout);
         }
 
         if (remaining <= 3 && !fetchingRef.current && uris.length > 0) {
@@ -346,13 +387,13 @@ export default function App() {
 
                     if (fetchedCount < videosToFetch) {
                         const fetchTimeout = setTimeout(doFetch, 150);
-                        timeoutRefsRef.current.add(fetchTimeout);
+                        ensureTimeoutRefs().add(fetchTimeout);
                     }
                 }
             };
 
             const initialFetchTimeout = setTimeout(doFetch, 50);
-            timeoutRefsRef.current.add(initialFetchTimeout);
+            ensureTimeoutRefs().add(initialFetchTimeout);
         }
     }, [
         visibleIndex,
@@ -368,9 +409,115 @@ export default function App() {
         syncPlaybackForIndex(0);
     }, [isBooting, syncPlaybackForIndex]);
 
+    // Track memory usage (simplified - uses player count as proxy)
+    useEffect(() => {
+        if (memoryTrackingIntervalRef.current) {
+            clearInterval(memoryTrackingIntervalRef.current);
+        }
+
+        // Estimate memory usage based on active players
+        // This is a simplified approach - in production, would need native module
+        const trackMemory = () => {
+            const activePlayers = playersRef.current.filter(
+                (p) => p && p.source?.uri && p.status !== "idle"
+            ).length;
+
+            // Rough estimate: ~50-100MB per active video player
+            // This is a placeholder - actual memory would need native module
+            const estimatedMemoryPerPlayer = 75; // MB
+            const estimatedMemory = activePlayers * estimatedMemoryPerPlayer;
+
+            if (activePlayers > 0) {
+                performanceMonitor.recordMetric(
+                    "memory_usage",
+                    estimatedMemory,
+                    {
+                        activePlayerCount: activePlayers,
+                        totalPlayerCount: playersRef.current.length,
+                        visibleIndex: visibleIndexRef.current,
+                    }
+                );
+            }
+        };
+
+        // Track memory every 30 seconds (reduced frequency to lower overhead)
+        memoryTrackingIntervalRef.current = setInterval(trackMemory, 30000);
+        // Only track on initial mount, not on every change
+        if (players.length > 0) {
+            trackMemory();
+        }
+
+        return () => {
+            if (memoryTrackingIntervalRef.current) {
+                clearInterval(memoryTrackingIntervalRef.current);
+                memoryTrackingIntervalRef.current = null;
+            }
+        };
+    }, [players.length]); // Only track when player count changes, not on every scroll
+
     const handleScroll = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
             if (isCleaningUpRef.current) return;
+
+            // Track scroll input timestamp for responsiveness measurement
+            // Measure only once per scroll gesture (when scroll starts)
+            const contentOffsetY = e.nativeEvent.contentOffset.y;
+            const currentVisibleIndex = visibleIndexRef.current;
+
+            // Start tracking only when scroll gesture begins (first scroll event)
+            // This ensures we measure only once per scroll gesture, not on every scroll event
+            if (!scrollLagTrackingActiveRef.current) {
+                const scrollTimestamp = performance.now();
+                lastScrollTimestampRef.current = scrollTimestamp;
+                scrollStartIndexRef.current = currentVisibleIndex;
+                scrollStartOffsetRef.current = contentOffsetY;
+                scrollLagTrackingActiveRef.current = true;
+
+                // Determine scroll direction based on offset change
+                // Compare with last known offset to determine direction
+                let scrollDirection: "up" | "down" = "down";
+                if (lastScrollOffsetRef.current !== null) {
+                    scrollDirection =
+                        contentOffsetY > lastScrollOffsetRef.current
+                            ? "down"
+                            : "up";
+                }
+                lastScrollOffsetRef.current = contentOffsetY;
+
+                // Use requestAnimationFrame to measure when frame is rendered
+                // This gives us input-to-frame latency
+                requestAnimationFrame(() => {
+                    if (
+                        lastScrollTimestampRef.current !== null &&
+                        scrollStartIndexRef.current !== null
+                    ) {
+                        const renderTimestamp = performance.now();
+                        const scrollLag =
+                            renderTimestamp - lastScrollTimestampRef.current;
+
+                        // Record scroll lag (input-to-frame latency)
+                        // Target: ≤16ms for 60Hz (1 frame)
+                        // Only record once per scroll gesture
+                        if (scrollLag > 0 && scrollLag < 1000) {
+                            performanceMonitor.recordMetric(
+                                "scroll_lag",
+                                scrollLag,
+                                {
+                                    fromIndex: scrollStartIndexRef.current,
+                                    scrollDirection,
+                                    targetMs: 16, // Target for 60Hz
+                                }
+                            );
+                        }
+
+                        // Don't reset tracking here - reset only when scroll ends
+                        // This prevents multiple measurements during one scroll gesture
+                    }
+                });
+            } else {
+                // Update last offset even if tracking is active (for next scroll)
+                lastScrollOffsetRef.current = contentOffsetY;
+            }
 
             if (scrollBlockedRef.current) {
                 const currentIndex = visibleIndexRef.current;
@@ -439,6 +586,13 @@ export default function App() {
 
     const handleMomentumScrollEnd = useCallback(
         (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            // Reset scroll lag tracking when scroll ends
+            scrollLagTrackingActiveRef.current = false;
+            lastScrollTimestampRef.current = null;
+            scrollStartIndexRef.current = null;
+            scrollStartOffsetRef.current = null;
+            // Keep lastScrollOffsetRef for next scroll direction calculation
+
             if (isCleaningUpRef.current) {
                 return;
             }
@@ -470,7 +624,7 @@ export default function App() {
                         const scrollCleanupTimeout = setTimeout(() => {
                             cleanupOldPlayers();
                         }, 100);
-                        timeoutRefsRef.current.add(scrollCleanupTimeout);
+                        ensureTimeoutRefs().add(scrollCleanupTimeout);
                     }
                 } else {
                     const targetIndex =
@@ -503,12 +657,13 @@ export default function App() {
                 clearTimeout(scrollBlockTimeoutRef.current);
             }
 
-            scrollBlockTimeoutRef.current = setTimeout(() => {
+            const scrollBlockTimeout = setTimeout(() => {
                 scrollBlockedRef.current = false;
                 setScrollEnabled(true);
                 scrollBlockTimeoutRef.current = null;
             }, SCROLL_BLOCK_TIMEOUT);
-            timeoutRefsRef.current.add(scrollBlockTimeoutRef.current);
+            scrollBlockTimeoutRef.current = scrollBlockTimeout;
+            ensureTimeoutRefs().add(scrollBlockTimeout);
         },
         []
     );
@@ -611,7 +766,7 @@ export default function App() {
                     showsVerticalScrollIndicator={false}
                     removeClippedSubviews
                     maxToRenderPerBatch={2}
-                    windowSize={5}
+                    windowSize={3}
                     initialNumToRender={1}
                     onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScrollEndDrag={(e) => {
@@ -647,14 +802,13 @@ export default function App() {
                                 clearTimeout(scrollBlockTimeoutRef.current);
                             }
 
-                            scrollBlockTimeoutRef.current = setTimeout(() => {
+                            const scrollBlockTimeout = setTimeout(() => {
                                 scrollBlockedRef.current = false;
                                 setScrollEnabled(true);
                                 scrollBlockTimeoutRef.current = null;
                             }, SCROLL_BLOCK_TIMEOUT);
-                            timeoutRefsRef.current.add(
-                                scrollBlockTimeoutRef.current
-                            );
+                            scrollBlockTimeoutRef.current = scrollBlockTimeout;
+                            ensureTimeoutRefs().add(scrollBlockTimeout);
                         }
                     }}
                     onScrollToIndexFailed={() => {

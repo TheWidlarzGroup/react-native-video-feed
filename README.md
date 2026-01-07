@@ -306,8 +306,11 @@ The app includes built-in performance monitoring to track key metrics:
 
 ### Tracked Metrics
 
-1. **Video Load Time**: Time to load video from idle to ready
-2. **Preload Effectiveness**: Number of preloaded videos ready when needed
+1. **Time to First Frame (TTFF)**: Time from when video appears in viewport to first frame displayed (skips first video due to initial load overhead)
+2. **FPS Stability**: Actual frames per second during video playback, measured using `requestAnimationFrame` (includes drop rate in metadata)
+3. **Memory Usage**: Estimated RAM usage based on active video players (~75MB per player) - simplified estimation, not precise
+4. **Scroll Lag**: Input-to-frame latency when scrolling (target: ≤16ms for 60Hz)
+5. **Preload Effectiveness**: Number of preloaded videos ready when needed
 
 ### Usage
 
@@ -327,10 +330,10 @@ import { performanceMonitor } from "./performance";
 performanceMonitor.recordMetric("custom_metric", 123.45, { metadata: "value" });
 
 // Get metrics
-const metrics = performanceMonitor.getMetrics("video_load_time");
-const average = performanceMonitor.getAverageMetric("video_load_time");
+const metrics = performanceMonitor.getMetrics("ttff");
+const average = performanceMonitor.getAverageMetric("ttff");
 
-// Export all metrics
+// Export all metrics (includes summary with averages)
 const json = performanceMonitor.exportMetrics();
 ```
 

@@ -34,9 +34,14 @@ const PerformanceMonitor = () => {
         );
     }
 
-    const formatValue = (value: number | null) => {
+    const formatValue = (value: number | null, unit: string = "ms") => {
         if (value === null) return "N/A";
-        return `${value.toFixed(2)}ms`;
+        return `${value.toFixed(2)}${unit}`;
+    };
+
+    const formatPercentage = (value: number | null) => {
+        if (value === null) return "N/A";
+        return `${value.toFixed(2)}%`;
     };
 
     return (
@@ -63,9 +68,27 @@ const PerformanceMonitor = () => {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Summary (Average)</Text>
                     <View style={styles.metricRow}>
-                        <Text style={styles.metricLabel}>Video Load Time:</Text>
+                        <Text style={styles.metricLabel}>TTFF:</Text>
                         <Text style={styles.metricValue}>
-                            {formatValue(summary.videoLoadTime)}
+                            {formatValue(summary.ttff)}
+                        </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                        <Text style={styles.metricLabel}>FPS Stability:</Text>
+                        <Text style={styles.metricValue}>
+                            {formatValue(summary.fpsStability, " fps")}
+                        </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                        <Text style={styles.metricLabel}>Memory Usage:</Text>
+                        <Text style={styles.metricValue}>
+                            {formatValue(summary.memoryUsage, " MB")}
+                        </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                        <Text style={styles.metricLabel}>Scroll Lag:</Text>
+                        <Text style={styles.metricValue}>
+                            {formatValue(summary.scrollLag)}
                         </Text>
                     </View>
                     <View style={styles.metricRow}>
@@ -91,7 +114,11 @@ const PerformanceMonitor = () => {
                                     {metric.name}
                                 </Text>
                                 <Text style={styles.metricValue}>
-                                    {metric.value.toFixed(2)}ms
+                                    {metric.name === "memory_usage"
+                                        ? `${metric.value.toFixed(2)} MB`
+                                        : metric.name === "fps_stability"
+                                        ? `${metric.value.toFixed(2)} fps`
+                                        : `${metric.value.toFixed(2)}ms`}
                                 </Text>
                             </View>
                         ))}
@@ -106,8 +133,8 @@ const styles = StyleSheet.create({
         position: "absolute",
         top: 100,
         right: 10,
-        width: 300,
-        maxHeight: 400,
+        width: 320,
+        maxHeight: 500,
         backgroundColor: "rgba(0, 0, 0, 0.9)",
         borderRadius: 8,
         padding: 12,
@@ -152,7 +179,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     content: {
-        maxHeight: 320,
+        maxHeight: 420,
     },
     section: {
         marginBottom: 16,
