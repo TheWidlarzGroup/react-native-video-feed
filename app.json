@@ -1,38 +1,38 @@
 {
-  "expo": {
-    "name": "VideoScrollExample",
-    "slug": "VideoScrollExample",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-    "plugins": [
-      [
-        "react-native-video",
-        {
-          "enableBackgroundAudio": true
+    "expo": {
+        "name": "VideoScrollExample",
+        "slug": "VideoScrollExample",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/icon.png",
+        "userInterfaceStyle": "light",
+        "newArchEnabled": true,
+        "plugins": [
+            [
+                "react-native-video",
+                {
+                    "enableBackgroundAudio": true
+                }
+            ]
+        ],
+        "splash": {
+            "image": "./assets/splash-icon.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#ffffff"
+        },
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.anonymous.VideoScrollExample"
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#ffffff"
+            },
+            "package": "com.anonymous.VideoScrollExample"
+        },
+        "web": {
+            "favicon": "./assets/favicon.png"
         }
-      ]
-    ],
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.VideoScrollExample"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "package": "com.anonymous.VideoScrollExample"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     }
-  }
 }
