@@ -98,10 +98,6 @@ export const useVideoPlayback = ({
                     } else {
                         if (player.isPlaying) player.pause();
                         if (!player.muted) player.muted = true;
-                        if (player.source?.uri) {
-                            player.replaceSourceAsync(null);
-                            preloadAttemptedRef.current.delete(player);
-                        }
                     }
                 } catch (e) {
                     // Ignore
