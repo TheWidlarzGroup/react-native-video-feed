@@ -10,7 +10,7 @@ import {
     usePerformanceMetrics,
     performanceMonitor,
     PERFORMANCE_MONITOR_ENABLED,
-} from "./performance";
+} from "../utils/performance";
 
 const PerformanceMonitor = () => {
     if (!PERFORMANCE_MONITOR_ENABLED) return null;

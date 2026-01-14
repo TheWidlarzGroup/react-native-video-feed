@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useEvent, VideoPlayer, VideoView } from "react-native-video";
 import VideoOverlay from "./VideoOverlay";
-import { performanceMonitor } from "./performance";
+import { performanceMonitor } from "../utils/performance";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 
@@ -220,59 +220,20 @@ const VideoViewComponent = ({
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    zIndex: 5,
+                    zIndex: 15,
                 }}
-                onPressIn={(e) => {
-                    pressStartTimeRef.current = Date.now();
-                    pressStartLocationRef.current = {
-                        x: e.nativeEvent.locationX,
-                        y: e.nativeEvent.locationY,
-                    };
-                }}
-                onPressOut={(e) => {
-                    if (
-                        pressStartTimeRef.current === null ||
-                        pressStartLocationRef.current === null
-                    ) {
-                        return;
-                    }
-
-                    const pressDuration =
-                        Date.now() - pressStartTimeRef.current;
-                    const pressDistance = Math.sqrt(
-                        Math.pow(
-                            e.nativeEvent.locationX -
-                                pressStartLocationRef.current.x,
-                            2
-                        ) +
-                            Math.pow(
-                                e.nativeEvent.locationY -
-                                    pressStartLocationRef.current.y,
-                                2
-                            )
-                    );
-
-                    const isQuickTap =
-                        pressDuration < 200 && pressDistance < 10;
-
-                    if (isQuickTap) {
-                        try {
-                            if (player.isPlaying) {
-                                player.pause();
-                                userPausedRef.current = true;
-                                setIsPlaying(false);
-                            } else {
-                                player.play();
-                                userPausedRef.current = false;
-                                setIsPlaying(true);
-                            }
-                        } catch (e) {
-                            // Ignore
+                onPress={() => {
+                    try {
+                        if (player.isPlaying) {
+                            player.pause();
+                            userPausedRef.current = true;
+                        } else {
+                            player.play();
+                            userPausedRef.current = false;
                         }
+                    } catch (e) {
+                        console.error(`[Video ${index}] Play/pause error:`, e);
                     }
-
-                    pressStartTimeRef.current = null;
-                    pressStartLocationRef.current = null;
                 }}
             />
         </View>

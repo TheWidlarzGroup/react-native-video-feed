@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
 import { Animated, Text, TouchableOpacity, View } from "react-native";
-import { styles } from "./styles";
+import { styles } from "../styles";
 
 interface VideoOverlayProps {
     isVisible: boolean;
