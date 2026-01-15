@@ -19,8 +19,7 @@ const PerformanceMonitor = () => {
     const { metrics, summary, clear } = usePerformanceMetrics();
 
     const handleExport = () => {
-        const json = performanceMonitor.exportMetrics();
-        console.log("Performance Metrics:", json);
+        performanceMonitor.exportMetrics();
     };
 
     if (!isVisible) {

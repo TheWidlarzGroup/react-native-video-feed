@@ -41,12 +41,6 @@ class PerformanceMonitor {
             metadata,
         });
 
-        if (__DEV__) {
-            console.log(
-                `[Performance] ${name}: ${value.toFixed(2)}ms`,
-                metadata
-            );
-        }
     }
 
     getMetrics(name?: MetricName): Metric[] {

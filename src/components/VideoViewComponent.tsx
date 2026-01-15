@@ -31,45 +31,33 @@ function VideoViewComponent({
         p.muted = true;
     });
 
-    console.log(`[${video.id}] Component render - isActive: ${isActive}, userPaused: ${userPaused}, shouldPreload: ${shouldPreload}`);
-
     useEffect(() => {
         if (!player) return;
 
         const currentUri = player.source?.uri;
         const currentStatus = player.status;
-        
-        console.log(`[${video.id}] Source effect - shouldPreload: ${shouldPreload}, isActive: ${isActive}, currentUri: ${currentUri}, expectedUri: ${video.url}, status: ${currentStatus}`);
 
         // Update source based on preload/active state (Slop-Social approach)
         // Always ensure source is set for preload/active videos
         if (shouldPreload || isActive) {
             if (!currentUri || currentUri !== video.url) {
-                console.log(`[${video.id}] ⚠️ SOURCE MISMATCH - Setting source to: ${video.url}, current URI: ${currentUri || 'null'}, status: ${currentStatus}`);
                 player.replaceSourceAsync({ uri: video.url }).then(() => {
-                    const newUri = player.source?.uri;
-                    const newStatus = player.status;
-                    console.log(`[${video.id}] ✅ replaceSourceAsync DONE - newUri: ${newUri}, newStatus: ${newStatus}`);
                     // Preload after source is set
                     try {
-                        console.log(`[${video.id}] Calling preload() after source set`);
                         player.preload();
                     } catch (e) {
-                        console.log(`[${video.id}] ❌ Preload error:`, e);
+                        // Preload error - silently fail
                     }
                 }).catch((e) => {
-                    console.log(`[${video.id}] ❌ replaceSourceAsync error:`, e);
+                    // replaceSourceAsync error - silently fail
                 });
             } else if (player.status === "idle") {
                 // Source is already set but player is idle, try to preload
                 try {
-                    console.log(`[${video.id}] Source OK but idle - calling preload(), status: ${player.status}`);
                     player.preload();
                 } catch (e) {
-                    console.log(`[${video.id}] ❌ Preload error:`, e);
+                    // Preload error - silently fail
                 }
-            } else {
-                console.log(`[${video.id}] ✅ Source OK and status OK: ${player.status}`);
             }
         }
         // Note: We don't clear source for videos outside preload window to avoid issues
@@ -82,14 +70,10 @@ function VideoViewComponent({
         const shouldPlay =
             isActive && !userPaused && AppState.currentState === "active";
 
-        console.log(`[${video.id}] Playback effect - isActive: ${isActive}, userPaused: ${userPaused}, AppState: ${AppState.currentState}, shouldPlay: ${shouldPlay}, player.status: ${player.status}, player.isPlaying: ${player.isPlaying}`);
-
         if (shouldPlay) {
-            console.log(`[${video.id}] CALLING player.play() - status: ${player.status}`);
             player.muted = false;
             player.play();
         } else {
-            console.log(`[${video.id}] CALLING player.pause() - status: ${player.status}`);
             player.muted = true;
             player.pause();
             if (shouldPreload) {
@@ -98,7 +82,6 @@ function VideoViewComponent({
         }
 
         if (isActive && !wasActiveRef.current) {
-            console.log(`[${video.id}] Becoming active - resetting currentTime and userPaused`);
             player.currentTime = 0;
             setUserPaused(false);
         }
@@ -121,8 +104,6 @@ function VideoViewComponent({
     }, [isActive, userPaused, player]);
 
     useEvent(player, "onStatusChange", () => {
-        const currentUri = player.source?.uri;
-        console.log(`[${video.id}] 🔄 onStatusChange - status: ${player.status}, isPlaying: ${player.isPlaying}, sourceUri: ${currentUri || 'null'}, isActive: ${isActive}, userPaused: ${userPaused}`);
         if (
             isActive &&
             !userPaused &&
@@ -130,7 +111,6 @@ function VideoViewComponent({
             player.status === "readyToPlay" &&
             !player.isPlaying
         ) {
-            console.log(`[${video.id}] ▶️ onStatusChange - CALLING player.play() because readyToPlay`);
             player.muted = false;
             player.play();
         }
@@ -146,7 +126,7 @@ function VideoViewComponent({
             <TouchableWithoutFeedback onPress={togglePause}>
                 <View style={styles.touchArea} />
             </TouchableWithoutFeedback>
-            <VideoOverlay isVisible={isActive} />
+            <VideoOverlay isVisible={isActive} isPaused={userPaused} />
         </View>
     );
 }

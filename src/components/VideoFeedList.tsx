@@ -25,7 +25,7 @@ const VideoFeedList = () => {
     const indexRef = useRef(currentIndex);
     const listRef = useRef<LegendListRef | null>(null);
     const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 50,
+        itemVisiblePercentThreshold: 30,
     }).current;
 
     const updateIndex = useCallback((nextIndex: number, maxIndex: number) => {
@@ -46,8 +46,6 @@ const VideoFeedList = () => {
             const maxIndex = videos.length - 1;
             const clampedIndex = Math.max(0, Math.min(nextIndex, maxIndex));
             const prevIndex = indexRef.current;
-
-            console.log(`[VideoFeedList] handleVideoChange - nextIndex: ${nextIndex}, clampedIndex: ${clampedIndex}, prevIndex: ${prevIndex}`);
 
             if (clampedIndex === prevIndex) {
                 return;
@@ -76,8 +74,6 @@ const VideoFeedList = () => {
                 Math.abs(distanceFromActive) <= MAX_PRELOAD_DISTANCE;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
-
-            console.log(`[VideoFeedList] renderItem - index: ${index}, currentIndex: ${currentIndex}, isActive: ${isActive}`);
 
             return (
                 <VideoViewComponent
@@ -122,7 +118,9 @@ const VideoFeedList = () => {
                 showsVerticalScrollIndicator={false}
                 snapToInterval={SCREEN_HEIGHT}
                 snapToAlignment="start"
-                decelerationRate="fast"
+                decelerationRate={0.88}
+                scrollEventThrottle={1}
+                disableIntervalMomentum={false}
                 onViewableItemsChanged={handleVideoChange}
                 viewabilityConfig={viewabilityConfig}
                 estimatedItemSize={SCREEN_HEIGHT}
