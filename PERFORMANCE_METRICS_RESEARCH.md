@@ -2,10 +2,12 @@
 
 ## Required Metrics
 
-1. **Time to First Frame (TTFF)** - Time from when video appears in viewport to first frame displayed
-2. **FPS Stability (Frame Drops)** - Percentage of frames lost during video playback
-3. **Memory Usage (Active Memory)** - RAM consumption by a single video player at a given moment
+1. **Time to First Frame (TTFF)** - Time from when video preload starts to first frame ready (readyToPlay status)
+2. **FPS Stability (Frame Drops)** - Actual FPS measured via requestAnimationFrame, with dropped frames detection
+3. **Memory Usage (Active Memory)** - RAM consumption by video players (requires native measurement - see instructions below)
 4. **Scroll Responsiveness (Scroll Lag)** - Input-to-frame delay when scrolling video list (target: ≤16ms for 60Hz)
+
+**Note**: Only metrics measurable in JavaScript are implemented. Memory Usage requires native module implementation.
 
 ---
 
@@ -13,39 +15,42 @@
 
 ### Definition
 
-Time from the moment video appears in the visible screen area (viewport) to the moment the first frame is displayed.
+Time from the moment video preload starts to the moment the first frame is ready to play (readyToPlay status).
+
+**Current Implementation**: Measures from preload start, not from viewport entry, to capture actual video loading performance.
 
 ### Measurement Method
 
-#### A. Detecting Viewport Entry
+#### A. Detecting Preload Start
 
--   **React Native FlatList**: Use `onViewableItemsChanged` callback (already used in `App.tsx`)
--   **Start moment**: When `isViewable === true` and `percentVisible >= 50%`
--   **Save timestamp**: `performance.now()` at viewport entry moment
+-   **Start moment**: When `player.preload()` is called or `replaceSourceAsync()` begins
+-   **Save timestamp**: `performance.now()` at preload start moment
+-   **Location**: In `VideoViewComponent.tsx` useEffect that handles preload logic
 
-#### B. Detecting First Frame
+#### B. Detecting First Frame Ready
 
--   **react-native-video v7**: Use `onProgress` event - first callback indicates first displayed frame
--   **Alternative**: Monitor `player.status === "readyToPlay"` + `player.isPlaying === true`
--   **Save timestamp**: `performance.now()` at first frame moment
+-   **react-native-video v7**: Monitor `player.status === "readyToPlay"` via `onStatusChange` event
+-   **Save timestamp**: `performance.now()` when status changes to readyToPlay
 
 #### C. TTFF Calculation
 
 ```typescript
-TTFF = timestamp_first_frame - timestamp_viewport_entry;
+TTFF = timestamp_readyToPlay - timestamp_preload_start;
 ```
 
 ### Implementation
 
--   Extended `VideoViewComponent.tsx` with TTFF tracking
--   Uses existing `performanceMonitor` to record metric
--   New metric type: `"ttff"`
--   **Note**: First video (index 0) is skipped as it has initial load overhead
+-   Implemented in `VideoViewComponent.tsx`
+-   Tracks preload start when `player.preload()` is called or source is replaced
+-   Records TTFF when `player.status === "readyToPlay"`
+-   Uses `performanceMonitor.recordMetric("ttff", ttff, metadata)`
+-   Metric includes metadata: `videoId`, `status`, `wasActive`
 
-### Challenges
+### Notes
 
--   Difference between `onLoad` (video loaded) and actual first frame on screen
--   Solution: Use `onProgress` as more precise indicator
+-   If video is already `readyToPlay` when preload starts, TTFF = 0 (preload worked perfectly)
+-   Measurement happens regardless of whether video is active or not
+-   Provides accurate video loading performance data
 
 ---
 
@@ -87,11 +92,13 @@ const dropRate = (droppedFrames / expectedFrames) * 100;
 
 ### Implementation
 
--   Tracking added in `VideoViewComponent.tsx`
--   Monitors `onProgress` events (reduced frequency to avoid performance impact)
--   Uses `requestAnimationFrame` to measure actual FPS every 3 seconds
--   New metric type: `"fps_stability"` (includes drop rate in metadata)
--   **Note**: Frame drops are included in `fps_stability` metadata, no separate metric needed
+-   Implemented in `useFPSMonitor` hook (`src/hooks/useFPSMonitor.ts`)
+-   Uses `requestAnimationFrame` to measure actual FPS
+-   Detects dropped frames when deltaTime > 2x expected frame time (~33.34ms for 60 FPS)
+-   Reports FPS stability every 1 second
+-   Metric type: `"fps_stability"` (value is actual FPS)
+-   Metadata includes: `droppedFrames` count and `dropRate` percentage
+-   Hook is enabled in `App.tsx` via `useFPSMonitor(true)`
 
 ### Challenges
 
@@ -105,46 +112,68 @@ const dropRate = (droppedFrames / expectedFrames) * 100;
 
 ### Definition
 
-Amount of RAM consumed by a single video player at a given moment.
+Amount of RAM consumed by video players at a given moment.
 
 ### Measurement Method
 
-#### A. React Native Performance API
+#### JavaScript Limitation
 
--   **Limitations**: React Native Performance API doesn't provide direct access to per-component memory
+-   `performance.memory` is **only available in Chrome DevTools/React Native Debugger**
+-   Not available on real devices in production
+-   React Native Performance API doesn't provide per-component memory access
 
-#### B. Native Modules
+#### Measurement in DevTools
 
--   **iOS**: Use `RCTMemoryInfo` or `ProcessInfo.processInfo.physicalMemory`
--   **Android**: Use `ActivityManager.getMemoryInfo()` or `Debug.getNativeHeapSize()`
--   **Problem**: These APIs provide memory for entire app, not per-component
+**Chrome DevTools (React Native Debugger):**
 
-#### C. Approximate Method (Current Implementation)
+1. Open Chrome DevTools (when using React Native Debugger)
+2. Go to **Console** tab
+3. Type: `performance.memory` to see memory info:
+   ```javascript
+   {
+     jsHeapSizeLimit: 4294705152,
+     totalJSHeapSize: 12345678,
+     usedJSHeapSize: 9876543
+   }
+   ```
+4. `usedJSHeapSize` is the current memory usage in bytes
+5. Convert to MB: `usedJSHeapSize / (1024 * 1024)`
 
--   **Estimate based on active players**: Count active video players
--   **Rough estimate**: ~75MB per active video player
--   **Difference**: Approximate usage by players
--   **Note**: Not precise, as other processes can change memory
+**React Native Debugger:**
 
-#### D. Better Method (Requires Native Module)
+1. Enable remote debugging
+2. Open Chrome DevTools
+3. Use `performance.memory` in console
+4. Monitor memory usage over time by periodically checking values
 
--   **Create native module**: `VideoMemoryTracker`
--   **iOS**: Use `AVPlayer` memory tracking (if available)
--   **Android**: Use `ExoPlayer` memory tracking (if available)
--   **React Native**: Export to JS through bridge
+**Manual Measurement Script:**
 
-### Implementation (Currently Simplified)
+```javascript
+// Run in DevTools console
+const measureMemory = () => {
+  if (performance.memory) {
+    const usedMB = performance.memory.usedJSHeapSize / (1024 * 1024);
+    const totalMB = performance.memory.totalJSHeapSize / (1024 * 1024);
+    const limitMB = performance.memory.jsHeapSizeLimit / (1024 * 1024);
+    
+    console.log(`Memory Usage: ${usedMB.toFixed(2)} MB`);
+    console.log(`Total Heap: ${totalMB.toFixed(2)} MB`);
+    console.log(`Heap Limit: ${limitMB.toFixed(2)} MB`);
+    
+    return usedMB;
+  }
+  return null;
+};
 
--   Uses player count as proxy for memory estimation
--   Tracks every 30 seconds (reduced frequency to lower overhead)
--   New metric type: `"memory_usage"` (in MB)
--   **Note**: This is an estimation, not precise measurement. For accurate measurements, a native module would be required.
+// Measure every 5 seconds
+setInterval(measureMemory, 5000);
+```
 
-### Challenges
+### Current Status
 
--   No direct API for per-component memory measurement in RN
--   Requires native module for precise measurements
--   Different devices have different memory allocations
+-   ⚠️ **Only measurable in DevTools** (not on real devices)
+-   📝 **Metric type**: `"memory_usage"` (in MB)
+-   💡 **Note**: For production measurements, use native profiling tools (Xcode Instruments, Android Profiler)
 
 ---
 
@@ -180,11 +209,13 @@ requestAnimationFrame(() => {
 
 ### Implementation
 
--   Extended `handleScroll` in `App.tsx`
--   Tracks input-to-frame latency
--   Measures only once per scroll gesture (not on every scroll event)
--   Scroll direction determined by comparing current offset with previous offset
--   New metric type: `"scroll_lag"`
+-   Implemented in `VideoFeedList.tsx`
+-   Uses `onScrollBeginDrag` event to capture scroll start
+-   Uses `requestAnimationFrame` to measure frame render time
+-   Calculates: `scrollLag = raf_timestamp - scroll_start_timestamp`
+-   Metric type: `"scroll_lag"` (in ms)
+-   Metadata includes: `timestamp`
+-   Target: ≤16ms for 60Hz displays
 
 ### Challenges
 
@@ -195,32 +226,29 @@ requestAnimationFrame(() => {
 
 ---
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: TTFF ✅
+### ✅ Implemented Metrics (JavaScript)
 
-1. ✅ Added viewport entry tracking in `VideoViewComponent`
-2. ✅ Added first frame tracking (using `onProgress` as first callback)
-3. ✅ Calculate and record TTFF
-4. ✅ Skip first video (index 0) to avoid initial load overhead
+1. **TTFF** - Measures from preload start to readyToPlay
+   - Location: `src/components/VideoViewComponent.tsx`
+   - Metric: `"ttff"` (in ms)
 
-### Phase 2: Scroll Responsiveness ✅
+2. **FPS Stability** - Measures actual FPS via requestAnimationFrame
+   - Location: `src/hooks/useFPSMonitor.ts`
+   - Metric: `"fps_stability"` (in fps)
+   - Includes dropped frames detection
 
-1. ✅ Extended `handleScroll` with input-to-frame measurement
-2. ✅ Used `requestAnimationFrame` to measure render time
-3. ✅ Measure only once per scroll gesture
-4. ✅ Proper scroll direction calculation
+3. **Scroll Lag** - Measures input-to-frame delay
+   - Location: `src/components/VideoFeedList.tsx`
+   - Metric: `"scroll_lag"` (in ms)
 
-### Phase 3: FPS Stability ✅
+### ⏭️ Requires Native Module
 
-1. ✅ Added `onProgress` event tracking (reduced frequency)
-2. ✅ Used `requestAnimationFrame` to measure actual FPS
-3. ✅ Frame drops included in `fps_stability` metadata
-
-### Phase 4: Memory Usage ✅
-
-1. ✅ Simplified measurement (player count as proxy)
-2. ⏭️ Future: Native module for precise measurements
+4. **Memory Usage** - Cannot be measured in JavaScript
+   - Requires native module implementation (see instructions above)
+   - Metric type ready: `"memory_usage"` (in MB)
+   - Integration code provided in instructions
 
 ---
 
@@ -258,64 +286,69 @@ requestAnimationFrame(() => {
 ```typescript
 interface TTFFMetric {
     name: "ttff";
-    value: number; // ms
+    value: number; // ms (0 if preloaded, otherwise time from preload start)
     timestamp: number;
     metadata: {
-        index: number;
-        preloaded: number; // 0 or 1
+        videoId: string;
+        status: "readyToPlay" | "loading" | "idle" | "error";
+        wasActive: boolean; // whether video was active when measured
     };
 }
 
 interface FPSStabilityMetric {
     name: "fps_stability";
-    value: number; // actual FPS
+    value: number; // actual FPS measured
     timestamp: number;
     metadata: {
-        index: number;
-        fpsDropRate: string; // percentage as string
+        droppedFrames: number; // count of dropped frames
+        dropRate: string; // percentage as string (e.g., "3.3%")
     };
 }
 
 interface MemoryUsageMetric {
     name: "memory_usage";
-    value: number; // MB (estimated)
+    value: number; // MB (only available in DevTools)
     timestamp: number;
-    metadata: {
-        activePlayerCount: number;
-        totalPlayerCount: number;
-        visibleIndex: number;
-    };
+    metadata?: Record<string, any>; // optional additional data
 }
 
 interface ScrollLagMetric {
     name: "scroll_lag";
-    value: number; // ms
+    value: number; // ms (input-to-frame delay)
     timestamp: number;
     metadata: {
-        fromIndex: number;
-        scrollDirection: "up" | "down";
-        targetMs: number; // 16 for 60Hz
+        timestamp: number; // when measurement was taken
     };
 }
 ```
 
 ---
 
-## Implementation Status
+## Performance Monitor UI
 
-1. ✅ Research completed
-2. ✅ TTFF implementation
-3. ✅ Scroll Responsiveness implementation
-4. ✅ FPS Stability implementation
-5. ✅ Memory Usage implementation (simplified)
-6. ✅ PerformanceMonitor UI extension
-7. ✅ Testing and validation
+-   Location: `src/components/PerformanceMonitor.tsx`
+-   Toggle button (📊) to show/hide metrics
+-   Displays average values for all metrics
+-   Shows last 20 individual metric records
+-   Export button to log JSON metrics to console
+-   Clear button to reset all metrics
+-   Only visible in `__DEV__` mode
+
+## Usage
+
+All metrics are automatically collected when:
+-   `useFPSMonitor(true)` is called in `App.tsx`
+-   Videos are loaded and played in `VideoFeedList`
+-   User scrolls the video feed
+
+Metrics can be viewed in the PerformanceMonitor UI (toggle button) or exported via console.
 
 ---
 
 ## Notes
 
--   **Memory Usage**: Current implementation is an estimation based on player count. For production use, consider implementing a native module for precise measurements.
--   **FPS Stability**: Frame drops are included in the `fps_stability` metric metadata, no separate `frame_drops` metric is needed.
--   **TTFF**: First video (index 0) is skipped in measurements to avoid initial app load overhead affecting results.
--   **Scroll Lag**: Measured only once per scroll gesture to avoid spam. Direction is determined by comparing scroll offsets.
+-   **Memory Usage**: Only measurable in DevTools via `performance.memory`. Not available on real devices. Use native profiling tools (Xcode Instruments, Android Profiler) for production measurements.
+-   **FPS Stability**: Measured continuously via `requestAnimationFrame`. Frame drops are included in metadata.
+-   **TTFF**: Measures from preload start to readyToPlay, providing accurate video loading performance data.
+-   **Scroll Lag**: Measured on each `onScrollBeginDrag` event using `requestAnimationFrame` for frame timing.
+-   **Console Logs**: Removed to reduce noise. Use PerformanceMonitor UI or export function to view metrics.

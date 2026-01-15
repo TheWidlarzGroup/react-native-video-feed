@@ -1,205 +1,217 @@
 # React Native Video v7 TikTok-Style Feed Example
 
-A high-performance TikTok-style vertical video feed built with React Native Video v7, featuring smooth infinite scroll, aggressive preloading, and optimized playback controls.
+A high-performance TikTok-style vertical video feed built with React Native Video v7 and `@legendapp/list`, featuring smooth infinite scroll, automatic snapping, intelligent preloading, and optimized playback controls.
 
 ## Features
 
 ### 🎥 Video Playback
 
--   **HLS Stream Support**: Uses Mux HLS streams for adaptive bitrate streaming
--   **Smooth Transitions**: Videos start playing when 50% visible for faster engagement
--   **Infinite Scroll**: Seamlessly cycles through videos infinitely using modulo indexing
--   **One-by-One Scrolling**: Enforced single-step scrolling prevents multi-video jumps
--   **Scroll Blocking**: Timeout-based scroll blocking prevents rapid scrolling issues
+-   **HLS Stream Support**: Uses HLS streams for adaptive bitrate streaming
+-   **Early Start**: Videos start playing when 30% visible for faster engagement
+-   **Infinite Scroll**: Seamlessly cycles through videos with automatic snapping
+-   **Automatic Snapping**: `snapToInterval` ensures videos always align perfectly after scroll
+-   **Smooth Scrolling**: Optimized `decelerationRate` (0.88) for responsive, fluid scrolling
+-   **Tap to Pause/Play**: Tap anywhere on video to pause or resume playback
+-   **Play Button Overlay**: Centered play button appears when video is paused by user
 
 ### ⚡ Performance Optimizations
 
--   **Aggressive Preloading**: Preloads 4 videos ahead and 4 behind for instant playback
--   **Zero-Rerender Cleanup**: Background resource cleanup without array modifications
--   **Optimized Rendering**: FlatList with proper windowing, clipping, and memoization
--   **Memory Management**: Automatic cleanup of video resources beyond viewport
--   **Smart Preload Tracking**: Prevents duplicate preload attempts
+-   **Intelligent Preloading**: Preloads up to 5 videos ahead and behind current position
+-   **Component Recycling**: Leverages `@legendapp/list` virtualization for efficient memory usage
+-   **Optimized Rendering**: LegendList with proper windowing, fixed item sizes, and memoization
+-   **Smart Source Management**: Only sets video source for active and preload-window videos
+-   **AppState Handling**: Automatically pauses videos when app goes to background
 
 ### 🎨 UI/UX
 
--   **Animated Overlays**: UI elements (likes, comments, share) fade in smoothly
+-   **Animated Overlays**: UI elements (likes, comments, share) fade in smoothly when video becomes active
+-   **Play Button Indicator**: Centered play button with fade animation when video is paused
 -   **Loading States**: Proper loading indicators during video buffering
--   **Error Handling**: Graceful error recovery with retry mechanisms
--   **Tap-to-Play/Pause**: Distinguishes taps from swipes for better UX
+-   **Error Handling**: Graceful error recovery
 -   **Seamless Scrolling**: No flicker or jumps during navigation
 
-## Architecture & Techniques
+## Architecture
 
-### Infinite Feed System
+### Component Structure
 
-The app implements a true infinite feed pattern:
+```
+App.tsx
+├── VideoFeedList (manages scroll, viewability, preload logic)
+│   └── VideoViewComponent (individual video item)
+│       ├── VideoView (react-native-video player)
+│       └── VideoOverlay (UI controls, play button)
+└── BottomTabBar (navigation)
+```
 
-1. **Unique Index Tracking**: Each video player instance gets a unique index in history (`playerVideoIndexRef`)
+### Key Components
 
-    - Initial videos: indices 0-4
-    - New videos: indices 5, 6, 7, 8... (infinite)
-    - Uses modulo to cycle through source videos: `uris[index % uris.length]`
+#### `App.tsx`
 
-2. **Stable Keys**: `keyExtractor` uses unique historical indices, ensuring FlatList treats each instance as distinct even when reusing source URIs
+Main application entry point. Renders `VideoFeedList` and `BottomTabBar`.
 
-3. **Proactive Fetching**: When ≤3 videos remain before end, automatically fetches 2-3 more videos ahead
+#### `VideoFeedList.tsx`
 
-### Preloading Strategy
+Manages the scrollable list of videos using `@legendapp/list` (LegendList).
 
-**Multi-Layer Preloading System:**
+**Key Features:**
 
-1. **Distance-Based Preloading**: Preloads current video + 4 videos ahead and 4 behind (9 total)
+-   Tracks current active video index via `onViewableItemsChanged`
+-   Calculates preload distance (5 videos ahead/behind)
+-   Determines scroll direction for smart preloading
+-   Uses `extraData={currentIndex}` to force re-renders when active video changes
 
-    - Only preloads if `status === "idle"` and not already attempted
-    - Uses `preloadAttemptedRef` Set to prevent duplicate calls
+**Configuration:**
 
-2. **New Video Preloading**: Automatically preloads newly created players after 100ms delay
+-   `viewabilityConfig.itemVisiblePercentThreshold: 30` - Videos start at 30% visibility
+-   `MAX_PRELOAD_DISTANCE: 8` - Preloads 5 videos in each direction
+-   `decelerationRate: 0.88` - Fast, responsive scrolling
+-   `scrollEventThrottle: 1` - Minimal throttling for smooth events
+-   `snapToInterval: SCREEN_HEIGHT` - Automatic snapping to video boundaries
+-   `drawDistance: SCREEN_HEIGHT * 3` - Renders 3 screens worth of content
 
-3. **Safe Preload Function**: Checks player status, verifies source URI, tracks attempts, handles errors
+#### `VideoViewComponent.tsx`
 
-### Zero-Rerender Cleanup System
+Renders individual video items and manages video lifecycle.
 
-**Background Resource Cleanup** (no array modifications):
+**Key Features:**
 
-Instead of removing players from the array (which causes rerenders), the cleanup system:
+-   Uses `useVideoPlayer` hook from `react-native-video` v7
+-   Manages source setting/clearing based on `isActive` and `shouldPreload` props
+-   Handles play/pause logic based on active state and user interaction
+-   Tracks `userPaused` state for manual pause/play
+-   Listens to `AppState` changes to pause/resume on background/foreground
+-   Uses `useEvent` to listen to `onStatusChange` and auto-play when ready
 
-1. **Preserves Array Structure**: `players` array never changes during cleanup
-2. **Cleans Resources Only**: For players beyond `PLAYERS_AROUND_VIEWPORT * 2` distance:
+**Source Management:**
 
-    - Pauses if playing
-    - Calls `replaceSourceAsync(null)` to release video resources
-    - Keeps player instances in array (FlatList handles rendering via `removeClippedSubviews`)
+-   Sets source via `replaceSourceAsync` when video becomes active or enters preload window
+-   Calls `preload()` after source is set to start buffering
+-   Does NOT clear source for videos outside preload window (relies on LegendList recycling)
 
-3. **Benefits**: No rerenders, no flicker, no `visibleIndex` changes, seamless user experience
+**Playback Logic:**
 
-### Scroll Control & One-by-One Navigation
+-   Plays when: `isActive && !userPaused && AppState === "active"`
+-   Pauses when: not active, user paused, or app in background
+-   Resets `currentTime` to 0 when video becomes active
+-   Unmutes active videos, mutes inactive ones
 
-**Enforced Single-Step Scrolling:**
+#### `VideoOverlay.tsx`
 
-1. **Scroll Blocking**: After each scroll, blocks further scrolling for 200ms using `scrollBlockedRef` and `scrollEnabled` state
+Displays UI overlays (likes, comments, share) and play button.
 
-2. **One-by-One Validation**: All scroll handlers check `diff === 1`. If user tries to jump multiple videos, snaps back to next/previous video only
+**Features:**
 
-3. **FlatList Configuration**: Uses `disableIntervalMomentum={true}` and `decelerationRate={0.95}` for controlled scrolling
+-   Fades in when video becomes active
+-   Shows centered play button when video is paused by user
+-   Animated transitions using `Animated` API
 
-### Tap vs Swipe Detection
+#### `useVideoFeed.ts`
 
-Uses `onPressIn`/`onPressOut` to distinguish taps from swipes:
+Hook that manages video data fetching.
 
--   Tracks press start time and location
--   On release, checks duration < 200ms and movement < 10px
--   Only triggers play/pause on true taps
--   Ignores swipe gestures completely
+**Features:**
 
-### Memory Management
-
-1. **Ref-Based State Management**: Uses refs for synchronous access and tracking
-2. **Cleanup on Unmount**: Clears all timeouts, animation frames, and releases video sources
-3. **Periodic Cleanup**: Runs every 5 scrolls, only cleans players beyond viewport distance
-
-### Performance Optimizations
-
-**FlatList Configuration:**
-
--   `removeClippedSubviews: true` - Unmounts off-screen items
--   `windowSize: 5` - Renders 5 screens worth
--   `maxToRenderPerBatch: 2` - Renders 2 items per batch
--   `scrollEventThrottle: 16` - 60fps scroll events
--   `disableIntervalMomentum: true` - Prevents multi-item jumps
--   `decelerationRate: 0.95` - Controlled deceleration
-
-**React Optimizations:**
-
--   `React.memo` on `VideoViewComponent` with custom comparison
--   `useCallback` for all event handlers
--   `useRef` for stable references
-
-**Video Player Optimizations:**
-
--   `initializeOnCreation: false` for manual control
--   Preload tracking prevents duplicate network requests
--   Muted inactive videos to save resources
--   Reset `currentTime` to 0 when pausing to prevent audio overlap
+-   Fetches video list from `SOURCES` array
+-   Creates multiple cycles of videos (20 cycles by default)
+-   Returns `videos`, `loading`, `error`, and `refetch` function
 
 ## How It Works
 
 ### Initialization Flow
 
-1. App resolves video URIs from `SOURCES` array
-2. Creates initial players with unique indices
-3. Preloads all videos with 50ms delays
-4. Auto-plays first video when ready
+1. `App.tsx` renders `VideoFeedList`
+2. `VideoFeedList` uses `useVideoFeed` hook to fetch video data
+3. `LegendList` renders `VideoViewComponent` for each video
+4. Each `VideoViewComponent` creates a `VideoPlayer` instance via `useVideoPlayer`
+5. Videos in preload window automatically set source and call `preload()`
 
 ### Scroll Flow
 
-1. User scrolls, `handleScroll` tracks position
-2. `onViewableItemsChanged` detects when video is 50% visible
-3. Updates `visibleIndex` only if `diff === 1`
-4. `syncPlaybackForIndex` plays current, pauses others, preloads nearby
-5. After scroll ends, blocks for 200ms
-6. If ≤3 videos remain, fetches more
+1. User scrolls vertically
+2. `onViewableItemsChanged` fires when video reaches 30% visibility
+3. `handleVideoChange` updates `currentIndex` state
+4. `renderItem` recalculates `isActive` and `shouldPreload` for each video
+5. `VideoViewComponent` receives updated props and adjusts playback/source accordingly
+6. `snapToInterval` automatically snaps to exact video position when scroll ends
+7. Videos within 8 positions get preloaded automatically
 
-### Cleanup Flow
+### Preload Strategy
 
-1. Triggered after every 5 scrolls
-2. Finds players beyond 8 positions from current
-3. Pauses and releases video sources
-4. Keeps players in array, FlatList handles unmounting
-5. Zero rerenders, no flicker or jumps
+**Distance-Based Preloading:**
 
-## Key Components
+-   Preloads current video + 5 videos ahead and 8 behind (17 total)
+-   Only preloads videos that are within `MAX_PRELOAD_DISTANCE`
+-   Direction-aware: when scrolling down, preloads ahead; when scrolling up, preloads behind
 
-### `App.tsx`
+**Source Management:**
 
-Manages video player pool, infinite scroll, scroll events, preloading, cleanup, and playback synchronization.
+-   Source is set via `replaceSourceAsync` when video enters preload window or becomes active
+-   `preload()` is called after source is set to start buffering
+-   Source is NOT explicitly cleared (relies on LegendList component recycling)
 
-**Key Functions:**
+### Playback Control
 
--   `cleanupOldPlayers()`: Background resource cleanup (no rerenders)
--   `fetchMoreVideos()`: Creates new players for infinite scroll
--   `syncPlaybackForIndex()`: Manages playback for current and nearby videos
--   `safePreload()`: Safe preload with duplicate prevention
--   `handleScroll()`: Tracks scroll position with one-by-one validation
--   `handleMomentumScrollEnd()`: Finalizes scroll with blocking
+**Automatic Playback:**
 
-### `VideoViewComponent.tsx`
+-   Active video plays automatically when ready
+-   Inactive videos are paused and muted
+-   Videos reset to start (currentTime = 0) when becoming active
 
-Renders individual video items, handles video lifecycle, manages loading/error states, distinguishes taps from swipes, prevents flicker.
+**User Control:**
 
-**Key Features:**
+-   Tap anywhere on video to toggle pause/play
+-   `userPaused` state tracks manual pause
+-   Play button appears in center when video is paused by user
+-   Play button disappears when video resumes
 
--   `wasEverReadyRef`: Tracks if video was ever ready to prevent loader flicker
--   Tap detection: `onPressIn`/`onPressOut` with time/distance checks
--   Status synchronization: Keeps UI in sync with player events
--   Memoization: Custom comparison prevents unnecessary rerenders
+**AppState Handling:**
 
-### `VideoOverlay.tsx`
-
-Displays interactive UI elements (likes, comments, share) with animated fade-in when video becomes active.
+-   Videos pause when app goes to background
+-   Videos resume when app returns to foreground (if active and not user-paused)
 
 ## Configuration
 
 ### Video Sources
 
-Edit `src/utils.ts` to change video sources:
+Edit `src/utils/utils.ts` to change video sources:
 
 ```typescript
 export const SOURCES = [
-    "https://stream.mux.com/your-video-1.m3u8",
-    "https://stream.mux.com/your-video-2.m3u8",
-    // ... more sources (works with any number)
+    "https://example.com/video1.m3u8",
+    "https://example.com/video2.m3u8",
+    // ... more sources
 ];
 ```
 
-### Performance Tuning
+### Preload Distance
 
-In `src/App.tsx`:
+In `src/components/VideoFeedList.tsx`:
 
 ```typescript
-const PLAYERS_AROUND_VIEWPORT = 4; // Preload distance (4 ahead, 4 behind)
-const CLEANUP_THRESHOLD = 5; // Scrolls before cleanup runs
-const MAX_PLAYERS_BEFORE_CLEANUP = 15; // Trigger cleanup when this many players exist
-const SCROLL_BLOCK_TIMEOUT = 200; // Milliseconds to block scroll after scroll ends
+const MAX_PRELOAD_DISTANCE = 8; // Adjust number of videos to preload
+```
+
+### Viewability Threshold
+
+In `src/components/VideoFeedList.tsx`:
+
+```typescript
+const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 30, // Adjust when videos start playing (0-100)
+}).current;
+```
+
+### Scroll Performance
+
+In `src/components/VideoFeedList.tsx`:
+
+```typescript
+<LegendList
+    decelerationRate={0.88} // Lower = faster scroll (0.0 - 1.0)
+    scrollEventThrottle={1} // Lower = more responsive (1-16)
+    snapToInterval={SCREEN_HEIGHT} // Snap distance
+    drawDistance={SCREEN_HEIGHT * 3} // Render distance
+/>
 ```
 
 ## Installation
@@ -215,162 +227,130 @@ bun run ios
 bun run android
 ```
 
+## Dependencies
+
+### Core Libraries
+
+-   **`react-native-video@7.0.0-beta.2`**: Video playback with `useVideoPlayer` and `VideoView`
+-   **`@legendapp/list@^2.0.19`**: High-performance list component with virtualization
+-   **`expo@~52.0.46`**: Expo framework
+-   **`react@18.3.1`**: React library
+-   **`react-native@0.76.9`**: React Native framework
+
+### Key React Native Video v7 Features Used
+
+-   **`useVideoPlayer`**: Hook to create and manage video player instances
+-   **`VideoView`**: Component to render video player
+-   **`useEvent`**: Hook to listen to player events (onStatusChange, etc.)
+-   **`preload()`**: Method to preload video without starting playback
+-   **`replaceSourceAsync()`**: Method to change video source dynamically
+-   **`player.status`**: Player status (idle, loading, readyToPlay, etc.)
+-   **`player.isPlaying`**: Boolean indicating if video is currently playing
+
 ## Technical Details
-
-### React Native Video v7 Features Used
-
--   **`VideoPlayer`**: Core player instance with manual initialization
--   **`preload()`**: Preloads video without starting playback
--   **`initializeOnCreation: false`**: Manual control over initialization
--   **`replaceSourceAsync()`**: Changes video source dynamically (used for cleanup)
--   **Event System**: `onLoad`, `onStatusChange`, `onError` for state management
--   **`VideoView`**: Renders video player with controls disabled
-
-### Infinite Scroll Implementation
-
-```typescript
-// Unique index tracking
-const nextVideoIndex = totalVideoCountRef.current; // 5, 6, 7, 8...
-const nextUri = uris[nextVideoIndex % uris.length]; // Cycles: 0,1,2,3,4,0,1,2...
-playerVideoIndexRef.current.set(newPlayer, nextVideoIndex); // Unique key
-
-// Proactive fetching
-if (remaining <= 3 && !fetchingRef.current) {
-    fetchMoreVideos(); // Adds 2-3 videos ahead
-}
-```
-
-### Preload Implementation
-
-```typescript
-// Safe preload with tracking
-const safePreload = (player: VideoPlayer) => {
-    if (preloadAttemptedRef.current.has(player)) {
-        if (player.status !== "idle") return false; // Already loaded
-    }
-    if (player.status !== "idle" || !player.source?.uri) return false;
-    player.preload();
-    preloadAttemptedRef.current.add(player);
-    return true;
-};
-```
-
-### Cleanup Implementation
-
-```typescript
-// Zero-rerender cleanup
-const cleanupOldPlayers = () => {
-    const cleanupDistance = PLAYERS_AROUND_VIEWPORT * 2; // 8
-
-    currentPlayers.forEach((player, idx) => {
-        const distance = Math.abs(idx - currentIndex);
-        if (distance > cleanupDistance) {
-            if (player.isPlaying) player.pause();
-            if (player.source?.uri) {
-                player.replaceSourceAsync(null); // Release resources
-            }
-        }
-    });
-    // No setPlayers() call = no rerenders!
-};
-```
-
-### Scroll Control Implementation
-
-```typescript
-// One-by-one validation
-const diff = Math.abs(clampedIndex - visibleIndexRef.current);
-if (diff === 1) {
-    setVisibleIndex(clampedIndex);
-} else {
-    const targetIndex =
-        clampedIndex > visibleIndexRef.current
-            ? visibleIndexRef.current + 1
-            : visibleIndexRef.current - 1;
-    setVisibleIndex(targetIndex);
-    scrollToOffset(targetIndex * screenHeight);
-}
-
-// Scroll blocking
-scrollBlockedRef.current = true;
-setScrollEnabled(false);
-setTimeout(() => {
-    scrollBlockedRef.current = false;
-    setScrollEnabled(true);
-}, SCROLL_BLOCK_TIMEOUT);
-```
-
-## Performance Monitoring
-
-The app includes built-in performance monitoring to track key metrics:
-
-### Tracked Metrics
-
-1. **Time to First Frame (TTFF)**: Time from when video appears in viewport to first frame displayed (skips first video due to initial load overhead)
-2. **FPS Stability**: Actual frames per second during video playback, measured using `requestAnimationFrame` (includes drop rate in metadata)
-3. **Memory Usage**: Estimated RAM usage based on active video players (~75MB per player) - simplified estimation, not precise
-4. **Scroll Lag**: Input-to-frame latency when scrolling (target: ≤16ms for 60Hz)
-5. **Preload Effectiveness**: Number of preloaded videos ready when needed
-
-### Usage
-
-**In Development Mode:**
-
--   Performance monitor overlay appears automatically (top-right corner)
--   Shows real-time metrics and averages
--   Clear button to reset metrics
--   Hide button to minimize overlay
-
-**Programmatic Access:**
-
-```typescript
-import { performanceMonitor } from "./performance";
-
-// Record custom metric
-performanceMonitor.recordMetric("custom_metric", 123.45, { metadata: "value" });
-
-// Get metrics
-const metrics = performanceMonitor.getMetrics("ttff");
-const average = performanceMonitor.getAverageMetric("ttff");
-
-// Export all metrics (includes summary with averages)
-const json = performanceMonitor.exportMetrics();
-```
-
-**Using Hook:**
-
-```typescript
-import { usePerformanceMetrics } from "./performance";
-
-const { summary, metrics, clear } = usePerformanceMetrics();
-```
-
-### Implementation
-
--   Uses native `performance.now()` API (no external dependencies)
--   Automatically tracks metrics during scroll and video events
--   Only active in `__DEV__` mode (disabled in production)
--   Lightweight with minimal overhead
-
-## Performance Considerations
 
 ### Memory Management
 
--   **No Array Modifications**: Cleanup doesn't modify `players` array, preventing rerenders
--   **Resource Release**: Only releases video sources, keeps player instances
--   **FlatList Windowing**: `removeClippedSubviews` handles unmounting off-screen items
--   **Ref Tracking**: All async operations tracked for proper cleanup
+-   **Component Recycling**: `@legendapp/list` automatically recycles components outside viewport
+-   **Source Management**: Sources are set for active/preload videos, but not explicitly cleared
+-   **Player Instances**: Each video has its own `VideoPlayer` instance created via `useVideoPlayer`
+-   **No Manual Cleanup**: Relies on React component lifecycle and LegendList recycling
 
-### Network Optimization
+### Performance Optimizations
 
--   **HLS Adaptive Streaming**: Automatically adjusts quality based on connection
--   **Proactive Preloading**: Videos ready before user scrolls to them
--   **Duplicate Prevention**: Preload tracking prevents redundant network requests
--   **Staggered Loading**: Initial preloads spaced 50ms apart to prevent overload
+**LegendList Configuration:**
 
-### Rendering Optimization
+-   `getFixedItemSize={() => SCREEN_HEIGHT}` - Fixed item size for better performance
+-   `estimatedItemSize={SCREEN_HEIGHT}` - Helps with initial render
+-   `drawDistance={SCREEN_HEIGHT * 3}` - Renders 3 screens worth of content
+-   `getItemType={() => "video"}` - All items are same type for better recycling
+-   `extraData={currentIndex}` - Forces re-render when active video changes
 
--   **Memoization**: `React.memo` with custom comparison prevents unnecessary rerenders
--   **Stable Keys**: Unique historical indices ensure stable FlatList keys
--   **Windowed Rendering**: Only renders visible items + buffer
--   **Event Throttling**: Scroll events throttled to 16ms (60fps)
+**React Optimizations:**
+
+-   `useCallback` for all event handlers to prevent unnecessary re-renders
+-   `useRef` for stable references (indexRef, wasActiveRef)
+-   Direct state updates in `renderItem` for immediate prop propagation
+
+**Video Player Optimizations:**
+
+-   Preload only when needed (within preload distance)
+-   Mute inactive videos to save resources
+-   Reset `currentTime` to 0 when pausing to prevent audio overlap
+-   Use `onStatusChange` event to auto-play when ready
+
+### Scroll Behavior
+
+**Snapping:**
+
+-   `pagingEnabled={true}` - Enables paging behavior
+-   `snapToInterval={SCREEN_HEIGHT}` - Snaps to exact video height
+-   `snapToAlignment="start"` - Aligns snap to start of video
+-   `disableIntervalMomentum={false}` - Allows momentum scrolling
+
+**Smoothness:**
+
+-   `decelerationRate={0.88}` - Fast deceleration for snappy feel
+-   `scrollEventThrottle={1}` - Minimal throttling for responsive events
+-   `bounces={false}` - No bounce effect for cleaner feel
+-   `overScrollMode="never"` - No overscroll on Android
+
+## Architecture Decisions
+
+### Why LegendList instead of FlatList?
+
+-   Better performance with large lists
+-   More efficient component recycling
+-   Better support for fixed item sizes
+-   Optimized for vertical scrolling feeds
+
+### Why not clear source for inactive videos?
+
+-   `replaceSourceAsync(null)` was found to be unreliable in testing
+-   LegendList handles component recycling automatically
+-   Clearing source caused black screens and playback issues
+-   Keeping source allows faster resume when scrolling back
+
+### Why 30% viewability threshold?
+
+-   Lower threshold (30% vs 50%) means videos start playing earlier
+-   Reduces perceived lag when scrolling
+-   Videos are ready to play by the time they're fully visible
+-   Balances early start with not starting too many videos at once
+
+### Why direction-aware preloading?
+
+-   When scrolling down, we need videos ahead (future)
+-   When scrolling up, we need videos behind (past)
+-   Direction tracking ensures we preload the right videos
+-   Reduces unnecessary preloading in wrong direction
+
+## Troubleshooting
+
+### Videos not playing after scroll
+
+-   Check that `isActive` prop is correctly passed to `VideoViewComponent`
+-   Verify `extraData={currentIndex}` is set on LegendList
+-   Check console logs for playback status
+
+### Black screens
+
+-   Verify source is set correctly via `replaceSourceAsync`
+-   Check that `preload()` is called after source is set
+-   Ensure video URL is valid and accessible
+
+### Scroll not smooth
+
+-   Adjust `decelerationRate` (lower = faster)
+-   Check `scrollEventThrottle` value
+-   Verify `drawDistance` is appropriate for device
+
+### Memory issues
+
+-   Reduce `MAX_PRELOAD_DISTANCE` if needed
+-   Check that LegendList is recycling components properly
+-   Monitor device memory usage
+
+## License
+
+Private project.
