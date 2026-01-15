@@ -11,6 +11,8 @@ import { Video } from "../types";
 import VideoOverlay from "./VideoOverlay";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
+const BOTTOM_BAR_HEIGHT = 64;
+const VIDEO_HEIGHT = screenHeight - BOTTOM_BAR_HEIGHT;
 
 interface VideoViewComponentProps {
     video: Video;
@@ -141,12 +143,12 @@ const VideoViewComponent = React.memo(function VideoViewComponent({
 const styles = StyleSheet.create({
     container: {
         width: screenWidth,
-        height: screenHeight,
+        height: VIDEO_HEIGHT,
         backgroundColor: "black",
     },
     video: {
         width: screenWidth,
-        height: screenHeight,
+        height: VIDEO_HEIGHT,
     },
     touchArea: {
         position: "absolute",

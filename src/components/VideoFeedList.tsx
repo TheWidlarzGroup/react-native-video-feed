@@ -13,6 +13,8 @@ import VideoViewComponent from "./VideoViewComponent";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const BOTTOM_BAR_HEIGHT = 64;
+const VIDEO_HEIGHT = SCREEN_HEIGHT - BOTTOM_BAR_HEIGHT;
 
 const MAX_PRELOAD_DISTANCE = 5;
 
@@ -117,16 +119,16 @@ const VideoFeedList = () => {
                 extraData={currentIndex}
                 pagingEnabled
                 showsVerticalScrollIndicator={false}
-                snapToInterval={SCREEN_HEIGHT}
+                snapToInterval={VIDEO_HEIGHT}
                 snapToAlignment="start"
                 decelerationRate={0.95}
                 scrollEventThrottle={16}
                 disableIntervalMomentum={false}
                 onViewableItemsChanged={handleVideoChange}
                 viewabilityConfig={viewabilityConfig}
-                estimatedItemSize={SCREEN_HEIGHT}
-                getFixedItemSize={() => SCREEN_HEIGHT}
-                drawDistance={SCREEN_HEIGHT * 3}
+                estimatedItemSize={VIDEO_HEIGHT}
+                getFixedItemSize={() => VIDEO_HEIGHT}
+                drawDistance={VIDEO_HEIGHT * 3}
                 getItemType={() => "video"}
                 bounces={false}
                 overScrollMode="never"
@@ -144,7 +146,7 @@ const styles = StyleSheet.create({
     list: {
         flex: 1,
         width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT,
+        height: VIDEO_HEIGHT,
     },
 });
 
