@@ -1,79 +1,44 @@
 import { useEffect, useState } from "react";
-import { useVideoPlayers } from "./useVideoPlayers";
-import { useVideoPlayback } from "./useVideoPlayback";
-import { useVideoScroll } from "./useVideoScroll";
+import { SOURCES } from "../utils/utils";
+import { Video } from "../types";
 
-export const useVideoFeed = () => {
-    const [isBooting, setIsBooting] = useState(true);
-    const {
-        players,
-        uris,
-        playersRef,
-        preloadAttemptedRef,
-        fetchingRef,
-        safePreload,
-        fetchMoreVideos,
-    } = useVideoPlayers();
+const CYCLE_COUNT = 20;
 
-    const { syncPlaybackForIndex } = useVideoPlayback({
-        playersRef,
-        uris,
-        preloadAttemptedRef,
-        safePreload,
-    });
+ const useVideoFeed = () => {
+    const [videos, setVideos] = useState<Video[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleVisibleIndexChange = (index: number) => {
-        syncPlaybackForIndex(index);
-    };
+    const fetchVideos = async () => {};
+    try {
+        setLoading(true);
+        setError(null);
 
-    const { visibleIndex, visibleIndexRef, handleMomentumScrollEnd, viewabilityConfigCallbackPairs } =
-        useVideoScroll({
-            playersRef,
-            onVisibleIndexChange: handleVisibleIndexChange,
-        });
+        const videoList = Array.from({ length: CYCLE_COUNT }).flatMap(
+            (_, cycleIndex) =>
+                SOURCES.map((url, index) => ({
+                    id: `${cycleIndex}-${index}`,
+                    url,
+                }))
+        );
 
-    // Set booting to false once players are initialized
+        setVideos(videoList);
+    } catch (error) {
+        setError(error as string);
+    } finally {
+        setLoading(false);
+    }
+
     useEffect(() => {
-        if (players.length > 0 && isBooting) {
-            setIsBooting(false);
-        }
-    }, [players.length, isBooting]);
-
-    // Sync playback when visible index changes
-    useEffect(() => {
-        const currentPlayers = playersRef.current;
-        if (currentPlayers.length === 0) return;
-        if (isBooting) {
-            syncPlaybackForIndex(0);
-        } else {
-            syncPlaybackForIndex(visibleIndexRef.current);
-        }
-    }, [visibleIndex, isBooting, syncPlaybackForIndex, visibleIndexRef, playersRef]);
-
-    const handleEndReached = () => {
-        const currentLength = playersRef.current.length;
-        const currentVisible = visibleIndexRef.current;
-        const remaining = currentLength - currentVisible - 1;
-
-        if (
-            remaining <= 2 &&
-            !fetchingRef.current &&
-            uris.length > 0 &&
-            currentLength > 0
-        ) {
-            fetchMoreVideos();
-        }
-    };
+        fetchVideos();
+    }, []);
 
     return {
-        isBooting,
-        players,
-        visibleIndex,
-        handleMomentumScrollEnd,
-        viewabilityConfigCallbackPairs,
-        handleEndReached,
-        playersRef,
-        fetchingRef,
-        uris,
+        videos,
+        loading,
+        error,
+        refetch: fetchVideos,
     };
 };
+
+export default useVideoFeed;

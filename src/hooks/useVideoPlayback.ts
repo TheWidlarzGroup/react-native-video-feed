@@ -1,111 +1,37 @@
-import { useCallback } from "react";
-import { VideoPlayer } from "react-native-video";
+import { useEffect, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
-interface UseVideoPlaybackParams {
-    playersRef: React.MutableRefObject<VideoPlayer[]>;
-    uris: string[];
-    preloadAttemptedRef: React.MutableRefObject<Set<VideoPlayer>>;
-    safePreload: (player: VideoPlayer) => boolean;
+interface UseVideoPlaybackProps {
+    isActive: boolean;
 }
 
-export const useVideoPlayback = ({
-    playersRef,
-    uris,
-    preloadAttemptedRef,
-    safePreload,
-}: UseVideoPlaybackParams) => {
-    const syncPlaybackForIndex = useCallback(
-        (targetIndex: number) => {
-            const currentPlayers = playersRef.current;
+interface UseVideoPlaybackResult {
+    paused: boolean;
+    togglePause: () => void;
+}
 
-            if (
-                !currentPlayers.length ||
-                targetIndex < 0 ||
-                targetIndex >= currentPlayers.length ||
-                !uris.length
-            ) {
-                return;
-            }
+const useVideoPlayback = ({
+    isActive,
+}: UseVideoPlaybackProps): UseVideoPlaybackResult => {
+    const [paused, setPaused] = useState(false);
+    useEffect(() => {
+        setPaused(!isActive);
+    }, [isActive]);
 
-            // Preload 5 ahead, 1 behind (like Slop-Social)
-            const preloadStart = Math.max(0, targetIndex - 1);
-            const preloadEnd = Math.min(currentPlayers.length, targetIndex + 6);
+    useEffect(() => {
+        const subscription = AppState.addEventListener(
+            "change",
+            (state: AppStateStatus) => setPaused(state !== "active")
+        );
 
-            currentPlayers.forEach((player, idx) => {
-                if (!player) return;
+        return () => subscription.remove();
+    }, []);
 
-                const expectedUri = uris[idx % uris.length];
-                const currentUri = player.source?.uri;
+    const togglePause = () => {
+        setPaused(!paused);
+    };
 
-                const isInPreloadRange =
-                    idx >= preloadStart && idx < preloadEnd;
-                const isActive = idx === targetIndex;
-
-                try {
-                    if (isActive) {
-                        if (player.muted) player.muted = false;
-
-                        // Only change source if missing or different, but not if already playing
-                        const sourceChanged = currentUri !== expectedUri;
-                        if (
-                            sourceChanged &&
-                            !player.isPlaying &&
-                            player.status !== "loading"
-                        ) {
-                            try {
-                                player.replaceSourceAsync({ uri: expectedUri });
-                                preloadAttemptedRef.current.delete(player);
-                            } catch (e) {}
-                        }
-
-                        // Preload if idle and source is set
-                        if (
-                            player.status === "idle" &&
-                            player.source?.uri &&
-                            !preloadAttemptedRef.current.has(player)
-                        ) {
-                            safePreload(player);
-                        }
-
-                        // Play if ready
-                        if (
-                            player.status === "readyToPlay" &&
-                            !player.isPlaying
-                        ) {
-                            player.play();
-                        }
-                    } else if (isInPreloadRange) {
-                        if (player.isPlaying) player.pause();
-                        if (!player.muted) player.muted = true;
-
-                        // Only change source if different and not loading
-                        const sourceChanged = currentUri !== expectedUri;
-                        if (sourceChanged && player.status !== "loading") {
-                            try {
-                                player.replaceSourceAsync({ uri: expectedUri });
-                                preloadAttemptedRef.current.delete(player);
-                            } catch (e) {}
-                        }
-
-                        // Preload if idle and source is set
-                        if (
-                            player.status === "idle" &&
-                            player.source?.uri &&
-                            !preloadAttemptedRef.current.has(player)
-                        ) {
-                            safePreload(player);
-                        }
-                    } else {
-                        if (player.isPlaying) player.pause();
-                        if (!player.muted) player.muted = true;
-                    }
-                } catch (e) {
-                    // Ignore
-                }
-            });
-        },
-        [uris, safePreload, playersRef, preloadAttemptedRef]
-    );
-
-    return { syncPlaybackForIndex };
+    return { paused, togglePause };
 };
+
+export default useVideoPlayback;
