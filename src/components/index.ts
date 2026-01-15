@@ -1,4 +1,3 @@
-export { BootScreen } from "./BootScreen";
 export { default as VideoFeedList } from "./VideoFeedList";
 export { default as VideoViewComponent } from "./VideoViewComponent";
 export { default as VideoOverlay } from "./VideoOverlay";

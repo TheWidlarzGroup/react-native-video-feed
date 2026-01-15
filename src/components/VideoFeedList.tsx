@@ -51,6 +51,7 @@ const VideoFeedList = () => {
                 return;
             }
 
+            // Batch state updates to reduce re-renders
             setDirection(clampedIndex > prevIndex ? "up" : "down");
             updateIndex(clampedIndex, maxIndex);
         },
@@ -118,8 +119,8 @@ const VideoFeedList = () => {
                 showsVerticalScrollIndicator={false}
                 snapToInterval={SCREEN_HEIGHT}
                 snapToAlignment="start"
-                decelerationRate={0.88}
-                scrollEventThrottle={1}
+                decelerationRate={0.95}
+                scrollEventThrottle={16}
                 disableIntervalMomentum={false}
                 onViewableItemsChanged={handleVideoChange}
                 viewabilityConfig={viewabilityConfig}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     AppState,
     Dimensions,
@@ -18,7 +18,7 @@ interface VideoViewComponentProps {
     shouldPreload?: boolean;
 }
 
-function VideoViewComponent({
+const VideoViewComponent = React.memo(function VideoViewComponent({
     video,
     isActive,
     shouldPreload,
@@ -129,7 +129,14 @@ function VideoViewComponent({
             <VideoOverlay isVisible={isActive} isPaused={userPaused} />
         </View>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison to prevent unnecessary re-renders
+    return (
+        prevProps.video.id === nextProps.video.id &&
+        prevProps.isActive === nextProps.isActive &&
+        prevProps.shouldPreload === nextProps.shouldPreload
+    );
+});
 
 const styles = StyleSheet.create({
     container: {
