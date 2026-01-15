@@ -146,7 +146,6 @@ const styles = StyleSheet.create({
     list: {
         flex: 1,
         width: SCREEN_WIDTH,
-        height: VIDEO_HEIGHT,
     },
 });
 

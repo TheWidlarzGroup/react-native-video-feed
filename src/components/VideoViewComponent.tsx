@@ -78,11 +78,14 @@ const VideoViewComponent = React.memo(function VideoViewComponent({
         } else {
             player.muted = true;
             player.pause();
-            if (shouldPreload) {
+            // Only reset currentTime for preload videos that are NOT active and NOT user-paused
+            // This prevents resetting when user manually pauses
+            if (shouldPreload && !isActive && !userPaused) {
                 player.currentTime = 0;
             }
         }
 
+        // Reset when video becomes active (but not when user unpauses)
         if (isActive && !wasActiveRef.current) {
             player.currentTime = 0;
             setUserPaused(false);

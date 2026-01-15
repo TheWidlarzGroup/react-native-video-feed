@@ -71,7 +71,7 @@ export const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         height: 64,
-        backgroundColor: "rgba(0,0,0,0.85)",
+        backgroundColor: "black",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-around",
