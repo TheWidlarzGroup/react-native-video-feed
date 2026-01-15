@@ -1,11 +1,18 @@
 import React, { useCallback, useRef, useState } from "react";
-import useVideoFeed from "../hooks/useVideoFeed";
+import {
+    ActivityIndicator,
+    Dimensions,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
 import { LegendList, LegendListRef, ViewToken } from "@legendapp/list";
+import useVideoFeed from "../hooks/useVideoFeed";
 import { Video } from "../types";
 import VideoViewComponent from "./VideoViewComponent";
-import { ActivityIndicator, View, Text, Dimensions } from "react-native";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const MAX_PRELOAD_DISTANCE = 5;
 
@@ -24,7 +31,7 @@ const VideoFeedList = () => {
     const updateIndex = useCallback((nextIndex: number, maxIndex: number) => {
         const clamped = Math.max(0, Math.min(nextIndex, maxIndex));
 
-        if (clamped !== indexRef.current) return;
+        if (clamped === indexRef.current) return;
 
         indexRef.current = clamped;
         setCurrentIndex(clamped);
@@ -40,6 +47,8 @@ const VideoFeedList = () => {
             const clampedIndex = Math.max(0, Math.min(nextIndex, maxIndex));
             const prevIndex = indexRef.current;
 
+            console.log(`[VideoFeedList] handleVideoChange - nextIndex: ${nextIndex}, clampedIndex: ${clampedIndex}, prevIndex: ${prevIndex}`);
+
             if (clampedIndex === prevIndex) {
                 return;
             }
@@ -52,7 +61,7 @@ const VideoFeedList = () => {
 
     const renderItem = useCallback(
         ({ item, index }: { item: Video; index: number }) => {
-            const isActive = index === indexRef.current;
+            const isActive = index === currentIndex;
             const distanceFromActive = index - currentIndex;
             const isAhead =
                 direction === "down"
@@ -67,6 +76,8 @@ const VideoFeedList = () => {
                 Math.abs(distanceFromActive) <= MAX_PRELOAD_DISTANCE;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
+
+            console.log(`[VideoFeedList] renderItem - index: ${index}, currentIndex: ${currentIndex}, isActive: ${isActive}`);
 
             return (
                 <VideoViewComponent
@@ -100,27 +111,42 @@ const VideoFeedList = () => {
     }
 
     return (
-        <View>
+        <View style={styles.container}>
             <LegendList
                 ref={listRef}
                 data={videos}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
+                extraData={currentIndex}
                 pagingEnabled
-                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
                 snapToInterval={SCREEN_HEIGHT}
                 snapToAlignment="start"
                 decelerationRate="fast"
                 onViewableItemsChanged={handleVideoChange}
                 viewabilityConfig={viewabilityConfig}
                 estimatedItemSize={SCREEN_HEIGHT}
+                getFixedItemSize={() => SCREEN_HEIGHT}
                 drawDistance={SCREEN_HEIGHT * 3}
                 getItemType={() => "video"}
                 bounces={false}
                 overScrollMode="never"
+                style={styles.list}
             />
         </View>
     );
 };
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: "black",
+    },
+    list: {
+        flex: 1,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+    },
+});
 
 export default VideoFeedList;
