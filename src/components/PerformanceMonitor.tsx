@@ -19,7 +19,8 @@ const PerformanceMonitor = () => {
     const { metrics, summary, clear } = usePerformanceMetrics();
 
     const handleExport = () => {
-        performanceMonitor.exportMetrics();
+        const json = performanceMonitor.exportMetrics();
+        console.log("Performance Metrics:", json);
     };
 
     if (!isVisible) {
@@ -33,9 +34,9 @@ const PerformanceMonitor = () => {
         );
     }
 
-    const formatValue = (value: number | null) => {
+    const formatValue = (value: number | null, unit: string = "ms") => {
         if (value === null) return "N/A";
-        return `${value.toFixed(2)}ms`;
+        return `${value.toFixed(2)}${unit}`;
     };
 
     return (
@@ -62,17 +63,21 @@ const PerformanceMonitor = () => {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Summary (Average)</Text>
                     <View style={styles.metricRow}>
-                        <Text style={styles.metricLabel}>Video Load Time:</Text>
+                        <Text style={styles.metricLabel}>TTFF:</Text>
                         <Text style={styles.metricValue}>
-                            {formatValue(summary.videoLoadTime)}
+                            {formatValue(summary.ttff)}
                         </Text>
                     </View>
                     <View style={styles.metricRow}>
-                        <Text style={styles.metricLabel}>
-                            Preload Effectiveness:
-                        </Text>
+                        <Text style={styles.metricLabel}>FPS Stability:</Text>
                         <Text style={styles.metricValue}>
-                            {formatValue(summary.preloadEffectiveness)}
+                            {formatValue(summary.fpsStability, " fps")}
+                        </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                        <Text style={styles.metricLabel}>Scroll Lag:</Text>
+                        <Text style={styles.metricValue}>
+                            {formatValue(summary.scrollLag)}
                         </Text>
                     </View>
                 </View>
@@ -90,7 +95,9 @@ const PerformanceMonitor = () => {
                                     {metric.name}
                                 </Text>
                                 <Text style={styles.metricValue}>
-                                    {metric.value.toFixed(2)}ms
+                                    {metric.name === "fps_stability"
+                                        ? `${metric.value.toFixed(2)} fps`
+                                        : `${metric.value.toFixed(2)}ms`}
                                 </Text>
                             </View>
                         ))}

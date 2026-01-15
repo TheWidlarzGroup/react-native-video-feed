@@ -1,6 +1,9 @@
 export const PERFORMANCE_MONITOR_ENABLED = __DEV__;
 
-type MetricName = "video_load_time" | "preload_effectiveness";
+type MetricName =
+    | "ttff"
+    | "fps_stability"
+    | "scroll_lag";
 
 interface Metric {
     name: MetricName;
@@ -13,6 +16,7 @@ class PerformanceMonitor {
     private metrics: Metric[] = [];
     private markers: Map<string, number> = new Map();
     private enabled: boolean = PERFORMANCE_MONITOR_ENABLED;
+    private readonly MAX_METRICS = 100; // Limit to prevent memory bloat
 
     startMark(name: string): void {
         if (!this.enabled) return;
@@ -34,13 +38,25 @@ class PerformanceMonitor {
         metadata?: Record<string, any>
     ): void {
         if (!this.enabled) return;
+
+        // Limit metadata size to reduce memory usage
+        const limitedMetadata = metadata
+            ? Object.fromEntries(
+                  Object.entries(metadata).slice(0, 5) // Keep only first 5 metadata entries
+              )
+            : undefined;
+
         this.metrics.push({
             name,
             value,
             timestamp: Date.now(),
-            metadata,
+            metadata: limitedMetadata,
         });
 
+        // Remove oldest metrics if limit exceeded
+        if (this.metrics.length > this.MAX_METRICS) {
+            this.metrics = this.metrics.slice(-this.MAX_METRICS);
+        }
     }
 
     getMetrics(name?: MetricName): Metric[] {
@@ -72,10 +88,9 @@ class PerformanceMonitor {
         return JSON.stringify(
             {
                 summary: {
-                    video_load_time: this.getAverageMetric("video_load_time"),
-                    preload_effectiveness: this.getAverageMetric(
-                        "preload_effectiveness"
-                    ),
+                    ttff: this.getAverageMetric("ttff"),
+                    fps_stability: this.getAverageMetric("fps_stability"),
+                    scroll_lag: this.getAverageMetric("scroll_lag"),
                 },
                 all: this.metrics,
             },
@@ -99,7 +114,7 @@ export const usePerformanceMetrics = () => {
     React.useEffect(() => {
         const interval = setInterval(() => {
             setMetrics(performanceMonitor.getMetrics());
-        }, 1000);
+        }, 2000); // Update every 2 seconds to reduce overhead
 
         return () => clearInterval(interval);
     }, []);
@@ -107,11 +122,9 @@ export const usePerformanceMetrics = () => {
     return {
         metrics,
         summary: {
-            videoLoadTime:
-                performanceMonitor.getAverageMetric("video_load_time"),
-            preloadEffectiveness: performanceMonitor.getAverageMetric(
-                "preload_effectiveness"
-            ),
+            ttff: performanceMonitor.getAverageMetric("ttff"),
+            fpsStability: performanceMonitor.getAverageMetric("fps_stability"),
+            scrollLag: performanceMonitor.getAverageMetric("scroll_lag"),
         },
         clear: () => {
             performanceMonitor.clearMetrics();

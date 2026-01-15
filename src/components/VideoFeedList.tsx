@@ -10,6 +10,7 @@ import { LegendList, LegendListRef, ViewToken } from "@legendapp/list";
 import useVideoFeed from "../hooks/useVideoFeed";
 import { Video } from "../types";
 import VideoViewComponent from "./VideoViewComponent";
+import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -29,6 +30,8 @@ const VideoFeedList = () => {
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 30,
     }).current;
+    const scrollStartTimeRef = useRef<number | null>(null);
+    const scrollLagFrameRef = useRef<number | null>(null);
 
     const updateIndex = useCallback((nextIndex: number, maxIndex: number) => {
         const clamped = Math.max(0, Math.min(nextIndex, maxIndex));
@@ -91,6 +94,26 @@ const VideoFeedList = () => {
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
 
+    const handleScrollBeginDrag = useCallback(() => {
+        scrollStartTimeRef.current = performance.now();
+
+        if (scrollLagFrameRef.current !== null) {
+            cancelAnimationFrame(scrollLagFrameRef.current);
+        }
+
+        scrollLagFrameRef.current = requestAnimationFrame(() => {
+            if (scrollStartTimeRef.current !== null) {
+                const scrollLag =
+                    performance.now() - scrollStartTimeRef.current;
+                performanceMonitor.recordMetric("scroll_lag", scrollLag, {
+                    timestamp: Date.now(),
+                });
+                scrollStartTimeRef.current = null;
+            }
+            scrollLagFrameRef.current = null;
+        });
+    }, []);
+
     if (loading) {
         return (
             <View>
@@ -125,6 +148,7 @@ const VideoFeedList = () => {
                 scrollEventThrottle={16}
                 disableIntervalMomentum={false}
                 onViewableItemsChanged={handleVideoChange}
+                onScrollBeginDrag={handleScrollBeginDrag}
                 viewabilityConfig={viewabilityConfig}
                 estimatedItemSize={VIDEO_HEIGHT}
                 getFixedItemSize={() => VIDEO_HEIGHT}

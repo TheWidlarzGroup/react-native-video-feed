@@ -9,6 +9,7 @@ import {
 import { useEvent, useVideoPlayer, VideoView } from "react-native-video";
 import { Video } from "../types";
 import VideoOverlay from "./VideoOverlay";
+import { performanceMonitor } from "../utils/performance";
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const BOTTOM_BAR_HEIGHT = 64;
@@ -20,128 +21,181 @@ interface VideoViewComponentProps {
     shouldPreload?: boolean;
 }
 
-const VideoViewComponent = React.memo(function VideoViewComponent({
-    video,
-    isActive,
-    shouldPreload,
-}: VideoViewComponentProps) {
-    const [userPaused, setUserPaused] = useState(false);
-    const wasActiveRef = useRef(isActive);
+const VideoViewComponent = React.memo(
+    function VideoViewComponent({
+        video,
+        isActive,
+        shouldPreload,
+    }: VideoViewComponentProps) {
+        const [userPaused, setUserPaused] = useState(false);
+        const wasActiveRef = useRef(isActive);
+        const ttffStartTimeRef = useRef<number | null>(null);
+        const ttffMeasuredRef = useRef(false);
+        const videoIdRef = useRef(video.id);
 
-    const player = useVideoPlayer(video.url, (p) => {
-        p.loop = true;
-        p.muted = true;
-    });
+        const player = useVideoPlayer(video.url, (p) => {
+            p.loop = true;
+            p.muted = true;
+        });
 
-    useEffect(() => {
-        if (!player) return;
+        useEffect(() => {
+            if (!player) return;
 
-        const currentUri = player.source?.uri;
-        const currentStatus = player.status;
+            const currentUri = player.source?.uri;
+            const currentStatus = player.status;
 
-        // Update source based on preload/active state (Slop-Social approach)
-        // Always ensure source is set for preload/active videos
-        if (shouldPreload || isActive) {
-            if (!currentUri || currentUri !== video.url) {
-                player.replaceSourceAsync({ uri: video.url }).then(() => {
-                    // Preload after source is set
+            if (shouldPreload || isActive) {
+                if (!currentUri || currentUri !== video.url) {
+                    if (
+                        ttffStartTimeRef.current === null &&
+                        !ttffMeasuredRef.current
+                    ) {
+                        ttffStartTimeRef.current = performance.now();
+                    }
+
+                    player
+                        .replaceSourceAsync({ uri: video.url })
+                        .then(() => {
+                            try {
+                                player.preload();
+                            } catch (e) {
+                                // Preload error - silently fail
+                            }
+                        })
+                        .catch((e) => {
+                            // replaceSourceAsync error - silently fail
+                        });
+                } else if (player.status === "idle") {
+                    if (
+                        ttffStartTimeRef.current === null &&
+                        !ttffMeasuredRef.current
+                    ) {
+                        ttffStartTimeRef.current = performance.now();
+                    }
+
                     try {
                         player.preload();
                     } catch (e) {
                         // Preload error - silently fail
                     }
-                }).catch((e) => {
-                    // replaceSourceAsync error - silently fail
-                });
-            } else if (player.status === "idle") {
-                // Source is already set but player is idle, try to preload
-                try {
-                    player.preload();
-                } catch (e) {
-                    // Preload error - silently fail
+                } else if (player.status === "loading") {
+                    if (
+                        ttffStartTimeRef.current === null &&
+                        !ttffMeasuredRef.current
+                    ) {
+                        ttffStartTimeRef.current = performance.now();
+                    }
                 }
             }
-        }
-        // Note: We don't clear source for videos outside preload window to avoid issues
-        // LegendList will recycle components, so this is safe
-    }, [shouldPreload, isActive, player, video.url]);
+            // Note: We don't clear source for videos outside preload window to avoid issues
+            // LegendList will recycle components, so this is safe
+        }, [shouldPreload, isActive, player, video.url]);
 
-    useEffect(() => {
-        if (!player) return;
-
-        const shouldPlay =
-            isActive && !userPaused && AppState.currentState === "active";
-
-        if (shouldPlay) {
-            player.muted = false;
-            player.play();
-        } else {
-            player.muted = true;
-            player.pause();
-            // Only reset currentTime for preload videos that are NOT active and NOT user-paused
-            // This prevents resetting when user manually pauses
-            if (shouldPreload && !isActive && !userPaused) {
-                player.currentTime = 0;
-            }
-        }
-
-        // Reset when video becomes active (but not when user unpauses)
-        if (isActive && !wasActiveRef.current) {
-            player.currentTime = 0;
-            setUserPaused(false);
-        }
-
-        wasActiveRef.current = isActive;
-    }, [isActive, userPaused, player, shouldPreload]);
-
-    useEffect(() => {
-        const subscription = AppState.addEventListener("change", (state) => {
+        useEffect(() => {
             if (!player) return;
-            if (isActive && state === "active" && !userPaused) {
+
+            if (video.id !== videoIdRef.current) {
+                ttffStartTimeRef.current = null;
+                ttffMeasuredRef.current = false;
+                videoIdRef.current = video.id;
+            }
+
+            const shouldPlay =
+                isActive && !userPaused && AppState.currentState === "active";
+
+            if (shouldPlay) {
                 player.muted = false;
                 player.play();
             } else {
                 player.muted = true;
                 player.pause();
+                if (shouldPreload && !isActive && !userPaused) {
+                    player.currentTime = 0;
+                }
+            }
+
+            if (isActive && !wasActiveRef.current) {
+                player.currentTime = 0;
+                setUserPaused(false);
+            }
+
+            wasActiveRef.current = isActive;
+        }, [isActive, userPaused, player, shouldPreload, video.id]);
+
+        useEffect(() => {
+            const subscription = AppState.addEventListener(
+                "change",
+                (state) => {
+                    if (!player) return;
+                    if (isActive && state === "active" && !userPaused) {
+                        player.muted = false;
+                        player.play();
+                    } else {
+                        player.muted = true;
+                        player.pause();
+                    }
+                }
+            );
+            return () => subscription.remove();
+        }, [isActive, userPaused, player]);
+
+        useEvent(player, "onStatusChange", () => {
+            if (
+                ttffStartTimeRef.current !== null &&
+                !ttffMeasuredRef.current &&
+                player.status === "readyToPlay"
+            ) {
+                const ttff = performance.now() - ttffStartTimeRef.current;
+                if (ttff >= 0 && ttff < 10000) {
+                    performanceMonitor.recordMetric("ttff", ttff, {
+                        videoId: video.id,
+                        status: player.status,
+                        wasActive: isActive,
+                    });
+                    ttffMeasuredRef.current = true;
+                    ttffStartTimeRef.current = null;
+                }
+            }
+
+            if (
+                isActive &&
+                !userPaused &&
+                AppState.currentState === "active" &&
+                player.status === "readyToPlay" &&
+                !player.isPlaying
+            ) {
+                player.muted = false;
+                player.play();
             }
         });
-        return () => subscription.remove();
-    }, [isActive, userPaused, player]);
 
-    useEvent(player, "onStatusChange", () => {
-        if (
-            isActive &&
-            !userPaused &&
-            AppState.currentState === "active" &&
-            player.status === "readyToPlay" &&
-            !player.isPlaying
-        ) {
-            player.muted = false;
-            player.play();
-        }
-    });
+        const togglePause = () => {
+            setUserPaused(!userPaused);
+        };
 
-    const togglePause = () => {
-        setUserPaused(!userPaused);
-    };
-
-    return (
-        <View style={styles.container}>
-            <VideoView player={player} controls={false} style={styles.video} />
-            <TouchableWithoutFeedback onPress={togglePause}>
-                <View style={styles.touchArea} />
-            </TouchableWithoutFeedback>
-            <VideoOverlay isVisible={isActive} isPaused={userPaused} />
-        </View>
-    );
-}, (prevProps, nextProps) => {
-    // Custom comparison to prevent unnecessary re-renders
-    return (
-        prevProps.video.id === nextProps.video.id &&
-        prevProps.isActive === nextProps.isActive &&
-        prevProps.shouldPreload === nextProps.shouldPreload
-    );
-});
+        return (
+            <View style={styles.container}>
+                <VideoView
+                    player={player}
+                    controls={false}
+                    style={styles.video}
+                />
+                <TouchableWithoutFeedback onPress={togglePause}>
+                    <View style={styles.touchArea} />
+                </TouchableWithoutFeedback>
+                <VideoOverlay isVisible={isActive} isPaused={userPaused} />
+            </View>
+        );
+    },
+    (prevProps, nextProps) => {
+        // Custom comparison to prevent unnecessary re-renders
+        return (
+            prevProps.video.id === nextProps.video.id &&
+            prevProps.isActive === nextProps.isActive &&
+            prevProps.shouldPreload === nextProps.shouldPreload
+        );
+    }
+);
 
 const styles = StyleSheet.create({
     container: {
