@@ -20,7 +20,8 @@ const FALLBACK_ITEM_HEIGHT = Math.floor(
     Dimensions.get("window").height - BOTTOM_BAR_HEIGHT,
 );
 
-const MAX_PRELOAD_DISTANCE = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_BEHIND = 1;
 const DRAW_DISTANCE_MULTIPLIER = Platform.OS === "android" ? 2 : 3;
 const SCROLL_EVENT_THROTTLE = Platform.OS === "android" ? 32 : 16;
 const USE_PLACEHOLDER_OUTSIDE_PRELOAD = Platform.OS === "android";
@@ -98,11 +99,11 @@ const VideoFeedList = () => {
                     : distanceFromActive < 0;
 
             const shouldPreloadAhead =
-                isAhead && Math.abs(distanceFromActive) <= MAX_PRELOAD_DISTANCE;
+                isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
 
             const shouldPreloadBehind =
                 !isAhead &&
-                Math.abs(distanceFromActive) <= MAX_PRELOAD_DISTANCE;
+                Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
 
