@@ -14,16 +14,18 @@ A vertical video feed in the style of TikTok built with **React Native Video v7*
 
 ### Performance
 
-- **Platform-specific preload**: Android – 3 videos each direction, iOS – 5.
+- **Asymmetric preload**: 1 video behind (for quick scroll back), **3 ahead** on Android and **5 ahead** on iOS (`PRELOAD_BEHIND=1`, `PRELOAD_AHEAD` platform-specific). Fewer players than symmetric preload.
 - **Placeholder on Android**: Outside the preload window a black placeholder is rendered instead of `VideoViewComponent` (fewer players = better performance).
 - **Measured height**: On Android the list mounts only after `onLayout`; `itemHeight` = measured container height (correct layout, no “peek” of the next video).
 - **Virtualization**: LegendList with fixed item size, memoization, recycling.
-- **Source only in preload window**: `replaceSourceAsync` / `preload()` only for active and nearby items (per `MAX_PRELOAD_DISTANCE`).
+- **Source only in preload window**: `replaceSourceAsync` / `preload()` only for active and items within preload range.
+- **Scroll feel**: `decelerationRate` – Android 0.98 (slower scroll), iOS 0.95; `disableIntervalMomentum={true}` for one video per swipe.
 - **AppState**: Playback pauses when app goes to background.
 
 ### Metrics (dev)
 
-- **TTFF** (Time to First Frame): from `replaceSourceAsync`/`preload()` call to `readyToPlay`.
+- **TTFF (load)**: from `replaceSourceAsync`/`preload()` (or when status is already `loading`) to `readyToPlay`.
+- **Perceived TTFF**: from when the video becomes visible (active) to `readyToPlay`; ~0 ms when preload works well.
 - **FPS**: number of `requestAnimationFrame` callbacks per second (≈ display refresh rate).
 - **Scroll lag**: delay from scroll start to first frame (requestAnimationFrame).
 - Enabled in `__DEV__`; view via 📊 button (PerformanceMonitor).
@@ -44,7 +46,7 @@ App.tsx
 ### VideoFeedList
 
 - **Current index**: `onViewableItemsChanged` → `currentIndex`; on Android the update runs in `requestAnimationFrame`.
-- **Preload**: `MAX_PRELOAD_DISTANCE` – Android 3, iOS 5 (each direction).
+- **Preload**: asymmetric – **1 behind**, **3 ahead** (Android) or **5 ahead** (iOS). `PRELOAD_BEHIND=1`, `PRELOAD_AHEAD` platform-specific.
 - **Scroll direction**: `direction` used for preloading “ahead” vs “behind”.
 - **Placeholder (Android only)**: When `!shouldPreload && !isActive` → black `View` instead of `VideoViewComponent`.
 - **Android layout**: `measuredHeight` from `onLayout`; list renders only when `measuredHeight !== null`; `snapToInterval` / `getFixedItemSize` / item `itemHeight` all use the same measured height.
@@ -52,18 +54,19 @@ App.tsx
 **Configuration:**
 
 - `viewabilityConfig.itemVisiblePercentThreshold: 30`
-- `MAX_PRELOAD_DISTANCE`: Android 3, iOS 5
-- `DRAW_DISTANCE_MULTIPLIER`: Android 2, iOS 3 (e.g. `drawDistance = itemHeight * 2` or `* 3`)
+- `PRELOAD_AHEAD`: Android 3, iOS 5 | `PRELOAD_BEHIND`: 1
+- `DRAW_DISTANCE_MULTIPLIER`: Android 2, iOS 3
 - `SCROLL_EVENT_THROTTLE`: Android 32 ms, iOS 16 ms
 - `snapToInterval={itemHeight}`, `snapToAlignment="start"`
-- `decelerationRate={0.95}`
+- `DECELERATION_RATE`: Android 0.98, iOS 0.95
 - `disableIntervalMomentum={true}` – one video per swipe
 
 ### VideoViewComponent
 
 - **Player**: `useVideoPlayer(video.url)`; loop, mute.
-- **Source**: In effect when `shouldPreload || isActive` – `replaceSourceAsync({ uri: video.url })` or `preload()` when `idle`; TTFF start is set before the call (not when status is `loading`).
+- **Source**: In effect when `shouldPreload || isActive` – `replaceSourceAsync({ uri: video.url })` or `preload()` when `idle`; TTFF (load) start set before call, or when status is already `loading` (fallback so Android still records TTFF).
 - **Play/pause**: Play when `isActive && !userPaused && AppState === "active"`; pause otherwise; reset `currentTime` when becoming active.
+- **Perceived TTFF**: Start when `isActive` becomes true; record when `readyToPlay` (or 0 if already ready when becoming active).
 - **Height**: `itemHeight` from list (measured layout on Android).
 
 ### useVideoFeed
@@ -92,7 +95,8 @@ To change sources, edit `NETLIFY_BASE` or the index array.
 In `VideoFeedList.tsx`:
 
 ```typescript
-const MAX_PRELOAD_DISTANCE = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_BEHIND = 1;
 ```
 
 ### Feed length
@@ -106,7 +110,7 @@ const CYCLE_COUNT = Platform.OS === "android" ? 10 : 20;
 ### Snap / momentum
 
 - `disableIntervalMomentum={true}` – after releasing finger, scroll stops on the next/previous video (one per swipe).
-- `decelerationRate={0.95}` – quick scroll decay.
+- `DECELERATION_RATE`: Android 0.98 (slower), iOS 0.95 – scroll decay.
 
 ## Installation & run
 
@@ -126,9 +130,9 @@ bun run android
 ## Troubleshooting
 
 - **On Android, a sliver of the next video is visible**: Ensure the list mounts after `onLayout` (`listReady`) and `itemHeight` is passed from measurement; placeholder outside preload enabled (`USE_PLACEHOLDER_OUTSIDE_PRELOAD`).
-- **Slow scroll on Android**: Placeholder outside preload, lower `MAX_PRELOAD_DISTANCE` and `CYCLE_COUNT`, higher `scrollEventThrottle` (32).
+- **Slow scroll on Android**: Placeholder outside preload, lower `PRELOAD_AHEAD` and `CYCLE_COUNT`, higher `scrollEventThrottle` (32).
 - **Scroll skips several videos**: Use `disableIntervalMomentum={true}`.
-- **TTFF**: Measured from `replaceSourceAsync`/`preload()` to `readyToPlay`; start is not set when status is `loading` (avoids underestimating TTFF).
+- **TTFF (load)**: From `replaceSourceAsync`/`preload()` (or when status is `loading`) to `readyToPlay`. Perceived TTFF: from visible to `readyToPlay`.
 - **FPS > 60**: On high-refresh-rate devices (e.g. 90/120 Hz), FPS reflects that refresh rate.
 
 ## License
