@@ -11,14 +11,14 @@ import { Video } from "../types";
 import VideoOverlay from "./VideoOverlay";
 import { performanceMonitor } from "../utils/performance";
 
-const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
-const BOTTOM_BAR_HEIGHT = 64;
-const VIDEO_HEIGHT = screenHeight - BOTTOM_BAR_HEIGHT;
+const { width: screenWidth } = Dimensions.get("window");
+const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height - 64);
 
 interface VideoViewComponentProps {
     video: Video;
     isActive: boolean;
     shouldPreload?: boolean;
+    itemHeight?: number;
 }
 
 const VideoViewComponent = React.memo(
@@ -26,6 +26,7 @@ const VideoViewComponent = React.memo(
         video,
         isActive,
         shouldPreload,
+        itemHeight = FALLBACK_ITEM_HEIGHT,
     }: VideoViewComponentProps) {
         const [userPaused, setUserPaused] = useState(false);
         const wasActiveRef = useRef(isActive);
@@ -134,7 +135,7 @@ const VideoViewComponent = React.memo(
                         player.muted = true;
                         player.pause();
                     }
-                }
+                },
             );
             return () => subscription.remove();
         }, [isActive, userPaused, player]);
@@ -174,11 +175,11 @@ const VideoViewComponent = React.memo(
         };
 
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, { height: itemHeight }]}>
                 <VideoView
                     player={player}
                     controls={false}
-                    style={styles.video}
+                    style={{ ...styles.video, height: itemHeight }}
                 />
                 <TouchableWithoutFeedback onPress={togglePause}>
                     <View style={styles.touchArea} />
@@ -188,24 +189,23 @@ const VideoViewComponent = React.memo(
         );
     },
     (prevProps, nextProps) => {
-        // Custom comparison to prevent unnecessary re-renders
         return (
             prevProps.video.id === nextProps.video.id &&
             prevProps.isActive === nextProps.isActive &&
-            prevProps.shouldPreload === nextProps.shouldPreload
+            prevProps.shouldPreload === nextProps.shouldPreload &&
+            prevProps.itemHeight === nextProps.itemHeight
         );
-    }
+    },
 );
 
 const styles = StyleSheet.create({
     container: {
         width: screenWidth,
-        height: VIDEO_HEIGHT,
         backgroundColor: "black",
+        overflow: "hidden",
     },
     video: {
         width: screenWidth,
-        height: VIDEO_HEIGHT,
     },
     touchArea: {
         position: "absolute",

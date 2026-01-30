@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
+    LayoutChangeEvent,
     StyleSheet,
     Text,
     View,
@@ -12,10 +13,11 @@ import { Video } from "../types";
 import VideoViewComponent from "./VideoViewComponent";
 import { performanceMonitor } from "../utils/performance";
 
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BOTTOM_BAR_HEIGHT = 64;
-const VIDEO_HEIGHT = SCREEN_HEIGHT - BOTTOM_BAR_HEIGHT;
+const FALLBACK_ITEM_HEIGHT = Math.floor(
+    Dimensions.get("window").height - BOTTOM_BAR_HEIGHT,
+);
 
 const MAX_PRELOAD_DISTANCE = 5;
 
@@ -25,7 +27,13 @@ const VideoFeedList = () => {
     const { videos, loading, error } = useVideoFeed();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
+    const [itemHeight, setItemHeight] = useState(FALLBACK_ITEM_HEIGHT);
     const indexRef = useRef(currentIndex);
+
+    const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
+        const h = Math.floor(e.nativeEvent.layout.height);
+        if (h > 0) setItemHeight(h);
+    }, []);
     const listRef = useRef<LegendListRef | null>(null);
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 30,
@@ -60,7 +68,7 @@ const VideoFeedList = () => {
             setDirection(clampedIndex > prevIndex ? "up" : "down");
             updateIndex(clampedIndex, maxIndex);
         },
-        [updateIndex, videos.length]
+        [updateIndex, videos.length],
     );
 
     const renderItem = useCallback(
@@ -86,10 +94,11 @@ const VideoFeedList = () => {
                     video={item}
                     isActive={isActive}
                     shouldPreload={shouldPreload}
+                    itemHeight={itemHeight}
                 />
             );
         },
-        [currentIndex, direction]
+        [currentIndex, direction, itemHeight],
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
@@ -133,7 +142,7 @@ const VideoFeedList = () => {
     }
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} onLayout={handleContainerLayout}>
             <LegendList
                 ref={listRef}
                 data={videos}
@@ -142,7 +151,7 @@ const VideoFeedList = () => {
                 extraData={currentIndex}
                 pagingEnabled
                 showsVerticalScrollIndicator={false}
-                snapToInterval={VIDEO_HEIGHT}
+                snapToInterval={itemHeight}
                 snapToAlignment="start"
                 decelerationRate={0.95}
                 scrollEventThrottle={16}
@@ -150,9 +159,9 @@ const VideoFeedList = () => {
                 onViewableItemsChanged={handleVideoChange}
                 onScrollBeginDrag={handleScrollBeginDrag}
                 viewabilityConfig={viewabilityConfig}
-                estimatedItemSize={VIDEO_HEIGHT}
-                getFixedItemSize={() => VIDEO_HEIGHT}
-                drawDistance={VIDEO_HEIGHT * 3}
+                estimatedItemSize={itemHeight}
+                getFixedItemSize={() => itemHeight}
+                drawDistance={itemHeight * 3}
                 getItemType={() => "video"}
                 bounces={false}
                 overScrollMode="never"
