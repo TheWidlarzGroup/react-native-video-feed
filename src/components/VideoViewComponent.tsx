@@ -79,13 +79,6 @@ const VideoViewComponent = React.memo(
                     } catch (e) {
                         // Preload error - silently fail
                     }
-                } else if (player.status === "loading") {
-                    if (
-                        ttffStartTimeRef.current === null &&
-                        !ttffMeasuredRef.current
-                    ) {
-                        ttffStartTimeRef.current = performance.now();
-                    }
                 }
             }
             // Note: We don't clear source for videos outside preload window to avoid issues

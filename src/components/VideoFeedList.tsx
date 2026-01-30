@@ -20,7 +20,10 @@ const FALLBACK_ITEM_HEIGHT = Math.floor(
     Dimensions.get("window").height - BOTTOM_BAR_HEIGHT,
 );
 
-const MAX_PRELOAD_DISTANCE = 5;
+const MAX_PRELOAD_DISTANCE = Platform.OS === "android" ? 3 : 5;
+const DRAW_DISTANCE_MULTIPLIER = Platform.OS === "android" ? 2 : 3;
+const SCROLL_EVENT_THROTTLE = Platform.OS === "android" ? 32 : 16;
+const USE_PLACEHOLDER_OUTSIDE_PRELOAD = Platform.OS === "android";
 
 type Direction = "up" | "down";
 
@@ -70,9 +73,16 @@ const VideoFeedList = () => {
                 return;
             }
 
-            // Batch state updates to reduce re-renders
-            setDirection(clampedIndex > prevIndex ? "up" : "down");
-            updateIndex(clampedIndex, maxIndex);
+            const applyUpdate = () => {
+                setDirection(clampedIndex > prevIndex ? "up" : "down");
+                updateIndex(clampedIndex, maxIndex);
+            };
+
+            if (Platform.OS === "android") {
+                requestAnimationFrame(applyUpdate);
+            } else {
+                applyUpdate();
+            }
         },
         [updateIndex, videos.length],
     );
@@ -94,6 +104,21 @@ const VideoFeedList = () => {
                 Math.abs(distanceFromActive) <= MAX_PRELOAD_DISTANCE;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
+
+            if (
+                USE_PLACEHOLDER_OUTSIDE_PRELOAD &&
+                !shouldPreload &&
+                !isActive
+            ) {
+                return (
+                    <View
+                        style={[
+                            styles.placeholder,
+                            { width: SCREEN_WIDTH, height: itemHeight },
+                        ]}
+                    />
+                );
+            }
 
             return (
                 <VideoViewComponent
@@ -161,14 +186,14 @@ const VideoFeedList = () => {
                     snapToInterval={itemHeight}
                     snapToAlignment="start"
                     decelerationRate={0.95}
-                    scrollEventThrottle={16}
-                    disableIntervalMomentum={false}
+                    scrollEventThrottle={SCROLL_EVENT_THROTTLE}
+                    disableIntervalMomentum={true}
                     onViewableItemsChanged={handleVideoChange}
                     onScrollBeginDrag={handleScrollBeginDrag}
                     viewabilityConfig={viewabilityConfig}
                     estimatedItemSize={itemHeight}
                     getFixedItemSize={() => itemHeight}
-                    drawDistance={itemHeight * 3}
+                    drawDistance={itemHeight * DRAW_DISTANCE_MULTIPLIER}
                     getItemType={() => "video"}
                     bounces={false}
                     overScrollMode="never"
@@ -187,6 +212,9 @@ const styles = StyleSheet.create({
     list: {
         flex: 1,
         width: SCREEN_WIDTH,
+    },
+    placeholder: {
+        backgroundColor: "black",
     },
 });
 
