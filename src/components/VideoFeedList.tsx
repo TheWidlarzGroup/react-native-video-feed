@@ -24,6 +24,7 @@ const MAX_PRELOAD_DISTANCE = Platform.OS === "android" ? 3 : 5;
 const DRAW_DISTANCE_MULTIPLIER = Platform.OS === "android" ? 2 : 3;
 const SCROLL_EVENT_THROTTLE = Platform.OS === "android" ? 32 : 16;
 const USE_PLACEHOLDER_OUTSIDE_PRELOAD = Platform.OS === "android";
+const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0.95;
 
 type Direction = "up" | "down";
 
@@ -185,7 +186,7 @@ const VideoFeedList = () => {
                     showsVerticalScrollIndicator={false}
                     snapToInterval={itemHeight}
                     snapToAlignment="start"
-                    decelerationRate={0.95}
+                    decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
                     disableIntervalMomentum={true}
                     onViewableItemsChanged={handleVideoChange}

@@ -3,9 +3,10 @@
 ## Required Metrics
 
 1. **Time to First Frame (TTFF)** - Time from when video preload starts to first frame ready (readyToPlay status)
-2. **FPS Stability (Frame Drops)** - Actual FPS measured via requestAnimationFrame, with dropped frames detection
-3. **Memory Usage (Active Memory)** - RAM consumption by video players (requires native measurement - see instructions below)
-4. **Scroll Responsiveness (Scroll Lag)** - Input-to-frame delay when scrolling video list (target: ≤16ms for 60Hz)
+2. **Perceived TTFF** - Time from when the video becomes visible (active) to first frame ready; user-facing metric; ~0 ms when preload works well
+3. **FPS Stability (Frame Drops)** - Actual FPS measured via requestAnimationFrame, with dropped frames detection
+4. **Memory Usage (Active Memory)** - RAM consumption by video players (requires native measurement - see instructions below)
+5. **Scroll Responsiveness (Scroll Lag)** - Input-to-frame delay when scrolling video list (target: ≤16ms for 60Hz)
 
 **Note**: Only metrics measurable in JavaScript are implemented. Memory Usage requires native module implementation.
 
@@ -54,7 +55,32 @@ TTFF = timestamp_readyToPlay - timestamp_preload_start;
 
 ---
 
-## 2. FPS Stability (Frame Drops)
+## 2. Perceived TTFF (visible → ready)
+
+### Definition
+
+Time from when the video **becomes visible** (user scrolls to it, `isActive` becomes true) to when the first frame is ready (`readyToPlay`). This is the **user-facing** metric: how long the user waits from seeing the video cell until playback can start.
+
+### Why two TTFF metrics?
+
+- **TTFF (load)**: From `replaceSourceAsync`/`preload()` to `readyToPlay` – measures player/network load time; can be measured before the video is visible (preload).
+- **Perceived TTFF**: From visible to `readyToPlay` – measures UX; if preload is good, this is ~0 ms (video already ready when user scrolls to it).
+
+### Measurement Method
+
+- **Start**: When `isActive` becomes true (video is the active/visible one); store `visibleAtRef.current = performance.now()`.
+- **End**: When `player.status === "readyToPlay"`.
+- **Special case**: If the video is already `readyToPlay` when we become active (preloaded), record perceived TTFF = 0 and metadata `preloaded: true`.
+
+### Implementation
+
+- In `VideoViewComponent.tsx`: `visibleAtRef` set when `isActive` transitions to true; in `onStatusChange` when `readyToPlay` and active, record `perceived_ttff = now - visibleAtRef`. When becoming active with `player.status === "readyToPlay"` already, record 0.
+- Metric: `performanceMonitor.recordMetric("perceived_ttff", value, { videoId, status, preloaded? })`.
+- One record per “visible session” (reset when `isActive` becomes false or `video.id` changes).
+
+---
+
+## 3. FPS Stability (Frame Drops)
 
 ### Definition
 
@@ -108,7 +134,7 @@ const dropRate = (droppedFrames / expectedFrames) * 100;
 
 ---
 
-## 3. Memory Usage (Active Memory)
+## 4. Memory Usage (Active Memory)
 
 ### Definition
 
@@ -177,7 +203,7 @@ setInterval(measureMemory, 5000);
 
 ---
 
-## 4. Scroll Responsiveness (Scroll Lag)
+## 5. Scroll Responsiveness (Scroll Lag)
 
 ### Definition
 
