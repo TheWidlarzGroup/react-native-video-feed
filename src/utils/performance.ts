@@ -2,6 +2,7 @@ export const PERFORMANCE_MONITOR_ENABLED = __DEV__;
 
 type MetricName =
     | "ttff"
+    | "perceived_ttff"
     | "fps_stability"
     | "scroll_lag";
 
@@ -89,6 +90,7 @@ class PerformanceMonitor {
             {
                 summary: {
                     ttff: this.getAverageMetric("ttff"),
+                    perceived_ttff: this.getAverageMetric("perceived_ttff"),
                     fps_stability: this.getAverageMetric("fps_stability"),
                     scroll_lag: this.getAverageMetric("scroll_lag"),
                 },
@@ -123,6 +125,7 @@ export const usePerformanceMetrics = () => {
         metrics,
         summary: {
             ttff: performanceMonitor.getAverageMetric("ttff"),
+            perceivedTtff: performanceMonitor.getAverageMetric("perceived_ttff"),
             fpsStability: performanceMonitor.getAverageMetric("fps_stability"),
             scrollLag: performanceMonitor.getAverageMetric("scroll_lag"),
         },

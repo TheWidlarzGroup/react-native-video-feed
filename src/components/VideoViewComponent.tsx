@@ -32,6 +32,8 @@ const VideoViewComponent = React.memo(
         const wasActiveRef = useRef(isActive);
         const ttffStartTimeRef = useRef<number | null>(null);
         const ttffMeasuredRef = useRef(false);
+        const visibleAtRef = useRef<number | null>(null);
+        const perceivedMeasuredRef = useRef(false);
         const videoIdRef = useRef(video.id);
 
         const player = useVideoPlayer(video.url, (p) => {
@@ -79,6 +81,12 @@ const VideoViewComponent = React.memo(
                     } catch (e) {
                         // Preload error - silently fail
                     }
+                } else if (
+                    player.status === "loading" &&
+                    ttffStartTimeRef.current === null &&
+                    !ttffMeasuredRef.current
+                ) {
+                    ttffStartTimeRef.current = performance.now();
                 }
             }
             // Note: We don't clear source for videos outside preload window to avoid issues
@@ -91,7 +99,30 @@ const VideoViewComponent = React.memo(
             if (video.id !== videoIdRef.current) {
                 ttffStartTimeRef.current = null;
                 ttffMeasuredRef.current = false;
+                visibleAtRef.current = null;
+                perceivedMeasuredRef.current = false;
                 videoIdRef.current = video.id;
+            }
+
+            if (isActive && !wasActiveRef.current) {
+                const now = performance.now();
+                visibleAtRef.current = now;
+                perceivedMeasuredRef.current = false;
+                if (
+                    player.status === "readyToPlay" &&
+                    !perceivedMeasuredRef.current
+                ) {
+                    performanceMonitor.recordMetric("perceived_ttff", 0, {
+                        videoId: video.id,
+                        status: "readyToPlay",
+                        preloaded: true,
+                    });
+                    perceivedMeasuredRef.current = true;
+                    visibleAtRef.current = null;
+                }
+            } else if (!isActive) {
+                visibleAtRef.current = null;
+                perceivedMeasuredRef.current = false;
             }
 
             const shouldPlay =
@@ -148,6 +179,23 @@ const VideoViewComponent = React.memo(
                     });
                     ttffMeasuredRef.current = true;
                     ttffStartTimeRef.current = null;
+                }
+            }
+
+            if (
+                isActive &&
+                visibleAtRef.current !== null &&
+                !perceivedMeasuredRef.current &&
+                player.status === "readyToPlay"
+            ) {
+                const perceivedTtff = performance.now() - visibleAtRef.current;
+                if (perceivedTtff >= -100 && perceivedTtff < 10000) {
+                    performanceMonitor.recordMetric("perceived_ttff", perceivedTtff, {
+                        videoId: video.id,
+                        status: player.status,
+                    });
+                    perceivedMeasuredRef.current = true;
+                    visibleAtRef.current = null;
                 }
             }
 

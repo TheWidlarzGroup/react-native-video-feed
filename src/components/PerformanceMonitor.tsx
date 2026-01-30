@@ -63,9 +63,17 @@ const PerformanceMonitor = () => {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Summary (Average)</Text>
                     <View style={styles.metricRow}>
-                        <Text style={styles.metricLabel}>TTFF:</Text>
+                        <Text style={styles.metricLabel}>TTFF (load):</Text>
                         <Text style={styles.metricValue}>
                             {formatValue(summary.ttff)}
+                        </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                        <Text style={styles.metricLabel}>
+                            Perceived TTFF (visible→ready):
+                        </Text>
+                        <Text style={styles.metricValue}>
+                            {formatValue(summary.perceivedTtff)}
                         </Text>
                     </View>
                     <View style={styles.metricRow}>
