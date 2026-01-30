@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { SOURCES } from "../utils/utils";
 import { Video } from "../types";
 
-const CYCLE_COUNT = 20;
+const CYCLE_COUNT = Platform.OS === "android" ? 10 : 20;
 
 const useVideoFeed = () => {
     const [videos, setVideos] = useState<Video[]>([]);
@@ -19,7 +20,7 @@ const useVideoFeed = () => {
                     SOURCES.map((url, index) => ({
                         id: `${cycleIndex}-${index}`,
                         url,
-                    }))
+                    })),
             );
 
             setVideos(videoList);
