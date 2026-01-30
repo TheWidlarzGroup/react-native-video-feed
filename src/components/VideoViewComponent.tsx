@@ -18,7 +18,6 @@ interface VideoViewComponentProps {
     video: Video;
     isActive: boolean;
     shouldPreload?: boolean;
-    /** Wysokość itemu z listy (zmierzona w VideoFeedList) – wyrównuje layout na Androidzie */
     itemHeight?: number;
 }
 
