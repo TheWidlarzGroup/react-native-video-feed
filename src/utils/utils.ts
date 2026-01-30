@@ -1,7 +1,5 @@
-export const SOURCES = [
-    "https://stream.mux.com/3jWgM01DY019O6hBjlwdljlBrULjfK6B6fLUZy86lmhVI.m3u8",
-    "https://stream.mux.com/qDVXNeXuL87zBBBtlWqrDvobfEJ7TKYvl93GQ1TnqF4.m3u8",
-    "https://stream.mux.com/WHBD6rsdoypxYlsED1fgB482XsLoaZFRATFlO85b3UM.m3u8",
-    "https://stream.mux.com/qz0102Sc2RyM6K1d02xLQc00qE8QoRevQrxDx3Labip01TLc.m3u8",
-    "https://stream.mux.com/00CaRd4etfCnY2nti02erWsyqhr3Qi36H56TC53q3Lkd00.m3u8",
-];
+const NETLIFY_BASE = "https://splendorous-muffin-0ddebe.netlify.app";
+
+export const SOURCES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(
+    (i) => `${NETLIFY_BASE}/v${i}/index.m3u8`,
+);

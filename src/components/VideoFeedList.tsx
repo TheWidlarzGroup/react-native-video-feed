@@ -3,6 +3,7 @@ import {
     ActivityIndicator,
     Dimensions,
     LayoutChangeEvent,
+    Platform,
     StyleSheet,
     Text,
     View,
@@ -27,13 +28,18 @@ const VideoFeedList = () => {
     const { videos, loading, error } = useVideoFeed();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
-    const [itemHeight, setItemHeight] = useState(FALLBACK_ITEM_HEIGHT);
+    const [measuredHeight, setMeasuredHeight] = useState<number | null>(
+        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
+    );
     const indexRef = useRef(currentIndex);
 
     const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
         const h = Math.floor(e.nativeEvent.layout.height);
-        if (h > 0) setItemHeight(h);
+        if (h > 0) setMeasuredHeight(h);
     }, []);
+
+    const itemHeight = measuredHeight ?? FALLBACK_ITEM_HEIGHT;
+    const listReady = measuredHeight !== null;
     const listRef = useRef<LegendListRef | null>(null);
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 30,
@@ -143,30 +149,32 @@ const VideoFeedList = () => {
 
     return (
         <View style={styles.container} onLayout={handleContainerLayout}>
-            <LegendList
-                ref={listRef}
-                data={videos}
-                renderItem={renderItem}
-                keyExtractor={keyExtractor}
-                extraData={currentIndex}
-                pagingEnabled
-                showsVerticalScrollIndicator={false}
-                snapToInterval={itemHeight}
-                snapToAlignment="start"
-                decelerationRate={0.95}
-                scrollEventThrottle={16}
-                disableIntervalMomentum={false}
-                onViewableItemsChanged={handleVideoChange}
-                onScrollBeginDrag={handleScrollBeginDrag}
-                viewabilityConfig={viewabilityConfig}
-                estimatedItemSize={itemHeight}
-                getFixedItemSize={() => itemHeight}
-                drawDistance={itemHeight * 3}
-                getItemType={() => "video"}
-                bounces={false}
-                overScrollMode="never"
-                style={styles.list}
-            />
+            {listReady ? (
+                <LegendList
+                    ref={listRef}
+                    data={videos}
+                    renderItem={renderItem}
+                    keyExtractor={keyExtractor}
+                    extraData={currentIndex}
+                    pagingEnabled
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={itemHeight}
+                    snapToAlignment="start"
+                    decelerationRate={0.95}
+                    scrollEventThrottle={16}
+                    disableIntervalMomentum={false}
+                    onViewableItemsChanged={handleVideoChange}
+                    onScrollBeginDrag={handleScrollBeginDrag}
+                    viewabilityConfig={viewabilityConfig}
+                    estimatedItemSize={itemHeight}
+                    getFixedItemSize={() => itemHeight}
+                    drawDistance={itemHeight * 3}
+                    getItemType={() => "video"}
+                    bounces={false}
+                    overScrollMode="never"
+                    style={styles.list}
+                />
+            ) : null}
         </View>
     );
 };
