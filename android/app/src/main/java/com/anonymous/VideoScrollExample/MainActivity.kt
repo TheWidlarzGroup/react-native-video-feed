@@ -3,6 +3,8 @@ package com.anonymous.VideoScrollExample
 import android.os.Build
 import android.os.Bundle
 
+import androidx.core.view.WindowCompat
+
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -12,10 +14,10 @@ import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    // Set the theme to AppTheme BEFORE onCreate to support
-    // coloring the background, status bar, and navigation bar.
-    // This is required for expo-splash-screen.
-    setTheme(R.style.AppTheme);
+    setTheme(R.style.AppTheme)
+    // Edge-to-edge: content draws under status bar (video full-bleed like iOS).
+    // Must run before super.onCreate so the window is configured before content is added.
+    WindowCompat.setDecorFitsSystemWindows(window, false)
     super.onCreate(null)
   }
 

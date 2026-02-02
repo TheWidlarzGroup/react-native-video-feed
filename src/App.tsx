@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { VideoFeedList, BottomTabBar, PerformanceMonitor } from "./components";
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 import { MetricsProvider } from "./contexts/MetricsContext";
@@ -15,9 +15,13 @@ export default function App() {
             <MetricsProvider>
                 <TabBarLayoutProvider>
                     <SafeAreaView edges={[]} style={styles.safeArea}>
+                        <StatusBar
+                            style="light"
+                            translucent={Platform.OS === "android"}
+                        />
                         <View style={styles.container}>
                             <VideoFeedList />
-                            <StatusBar style="light" />
+
                             <BottomTabBar />
                             <PerformanceMonitor />
                         </View>

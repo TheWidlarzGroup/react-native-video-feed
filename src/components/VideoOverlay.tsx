@@ -62,35 +62,43 @@ const VideoOverlay = ({
     const [seekingProgress, setSeekingProgress] = useState<number | null>(null);
     const trackLayoutRef = useRef({ x: 0, width: 1 });
     const seekTrackRef = useRef<View>(null);
+    const onSeekRef = useRef(onSeek);
+    const progressRef = useRef(progress);
+
+    onSeekRef.current = onSeek;
+    progressRef.current = progress;
 
     const displayProgress =
         seekingProgress !== null ? seekingProgress : progress;
 
     const panResponder = useRef(
         PanResponder.create({
-            onStartShouldSetPanResponder: () => !!onSeek,
-            onMoveShouldSetPanResponder: () => !!onSeek,
+            onStartShouldSetPanResponder: () => !!onSeekRef.current,
+            onStartShouldSetPanResponderCapture: () => !!onSeekRef.current,
+            onMoveShouldSetPanResponder: () => !!onSeekRef.current,
             onPanResponderGrant: (evt) => {
-                if (!onSeek) return;
+                const seek = onSeekRef.current;
+                if (!seek) return;
                 const { locationX } = evt.nativeEvent;
                 const { width: trackW } = trackLayoutRef.current;
                 const p =
                     trackW > 0
                         ? Math.max(0, Math.min(1, locationX / trackW))
-                        : progress;
+                        : progressRef.current;
                 setSeekingProgress(p);
-                onSeek(p);
+                seek(p);
             },
             onPanResponderMove: (evt) => {
-                if (!onSeek) return;
+                const seek = onSeekRef.current;
+                if (!seek) return;
                 const moveX = evt.nativeEvent.pageX;
                 const { x: trackX, width: trackW } = trackLayoutRef.current;
                 const p =
                     trackW > 0
                         ? Math.max(0, Math.min(1, (moveX - trackX) / trackW))
-                        : progress;
+                        : progressRef.current;
                 setSeekingProgress(p);
-                onSeek(p);
+                seek(p);
             },
             onPanResponderRelease: () => {
                 setSeekingProgress(null);
@@ -199,6 +207,7 @@ const VideoOverlay = ({
             {/* Seekbar: stuck right above bottom bar, full screen width */}
             <View
                 ref={seekTrackRef}
+                pointerEvents="box-only"
                 style={[
                     styles.seekBarHitAreaSticky,
                     {
