@@ -26,6 +26,7 @@ const PLAY_BUTTON_HALF = PLAY_BUTTON_SIZE / 2;
 const RIGHT_ICON_SIZE = 34;
 const RIGHT_ICON_OPACITY = 0.88;
 const RIGHT_GAP = 18;
+const AVATAR_SIZE = 40;
 const BOTTOM_SECTION_MARGIN = 22; // aligns right icons with description bottom
 const SEEK_BAR_HEIGHT = 3;
 const SEEK_BAR_HIT_SLOP = 14;
@@ -266,6 +267,13 @@ const VideoOverlay = ({
                         <Text style={styles.iconLabel}>Metrics</Text>
                     </TouchableOpacity>
                 )}
+                <View style={styles.avatarPlaceholder}>
+                    <Ionicons
+                        name="person"
+                        size={AVATAR_SIZE * 0.5}
+                        color="rgba(255,255,255,0.6)"
+                    />
+                </View>
             </View>
 
             <View
@@ -329,8 +337,9 @@ const VideoOverlay = ({
             >
                 <Text style={styles.seekTimerText}>
                     {formatSeekTime(
-                        displayProgress * (duration > 0 ? duration : 0),
-                    )}{" / "}
+                        displayProgress * (duration > 0 ? duration : 0)
+                    )}
+                    {" / "}
                     {formatSeekTime(duration > 0 ? duration : 0)}
                 </Text>
             </Animated.View>
@@ -338,7 +347,10 @@ const VideoOverlay = ({
             <Animated.View
                 style={[
                     styles.bottomSection,
-                    { marginBottom: BOTTOM_SECTION_MARGIN, opacity: descOpacity },
+                    {
+                        marginBottom: BOTTOM_SECTION_MARGIN,
+                        opacity: descOpacity,
+                    },
                 ]}
             >
                 <View style={styles.captionArea}>
@@ -379,6 +391,16 @@ export const styles = StyleSheet.create({
         zIndex: 10,
     },
     iconButton: {
+        alignItems: "center",
+    },
+    avatarPlaceholder: {
+        width: AVATAR_SIZE,
+        height: AVATAR_SIZE,
+        borderRadius: AVATAR_SIZE / 2,
+        backgroundColor: "rgba(255,255,255,0.2)",
+        borderWidth: 2,
+        borderColor: "rgba(255,255,255,0.4)",
+        justifyContent: "center",
         alignItems: "center",
     },
     iconLabel: {
