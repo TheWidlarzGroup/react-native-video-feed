@@ -249,7 +249,7 @@ const VideoOverlay = ({
                     <Text style={styles.captionDesc} numberOfLines={2}>
                         First line of video description.
                         {"\n"}
-                        Seconds line of description.
+                        Second line of description.
                     </Text>
                 </View>
             </View>
