@@ -15,10 +15,7 @@ import VideoViewComponent from "./VideoViewComponent";
 import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const BOTTOM_BAR_HEIGHT = 64;
-const FALLBACK_ITEM_HEIGHT = Math.floor(
-    Dimensions.get("window").height - BOTTOM_BAR_HEIGHT,
-);
+const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height);
 
 const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
 const PRELOAD_BEHIND = 1;
@@ -34,7 +31,7 @@ const VideoFeedList = () => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
-        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
+        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null
     );
     const indexRef = useRef(currentIndex);
 
@@ -86,7 +83,7 @@ const VideoFeedList = () => {
                 applyUpdate();
             }
         },
-        [updateIndex, videos.length],
+        [updateIndex, videos.length]
     );
 
     const renderItem = useCallback(
@@ -102,8 +99,7 @@ const VideoFeedList = () => {
                 isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
 
             const shouldPreloadBehind =
-                !isAhead &&
-                Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
+                !isAhead && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
 
@@ -131,7 +127,7 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [currentIndex, direction, itemHeight],
+        [currentIndex, direction, itemHeight]
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
