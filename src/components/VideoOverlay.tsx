@@ -26,8 +26,7 @@ const PLAY_BUTTON_HALF = PLAY_BUTTON_SIZE / 2;
 const RIGHT_ICON_SIZE = 34;
 const RIGHT_ICON_OPACITY = 0.88;
 const RIGHT_GAP = 18;
-/** Same as bottomSection marginBottom so icons align with description */
-const BOTTOM_SECTION_MARGIN = 22;
+const BOTTOM_SECTION_MARGIN = 22; // aligns right icons with description bottom
 const SEEK_BAR_HEIGHT = 3;
 const SEEK_BAR_HIT_SLOP = 14;
 const SEEK_BAR_AREA_HEIGHT = SEEK_BAR_HEIGHT + 2 * SEEK_BAR_HIT_SLOP;
@@ -213,7 +212,6 @@ const VideoOverlay = ({
             ]}
             pointerEvents="box-none"
         >
-            {/* Play button in center when paused */}
             <Animated.View
                 style={[
                     styles.playButtonContainer,
@@ -230,7 +228,6 @@ const VideoOverlay = ({
                 <Ionicons name="play" size={40} color="#fff" />
             </Animated.View>
 
-            {/* Right side: like, comment, share, metrics (same row) */}
             <View style={[styles.overlayRight, { bottom: rightColumnBottom }]}>
                 <TouchableOpacity style={styles.iconButton}>
                     <Ionicons
@@ -271,7 +268,6 @@ const VideoOverlay = ({
                 )}
             </View>
 
-            {/* Seekbar: stuck right above bottom bar, full screen width */}
             <View
                 ref={seekTrackRef}
                 pointerEvents="box-only"
@@ -318,7 +314,6 @@ const VideoOverlay = ({
                 </Animated.View>
             </View>
 
-            {/* Seek timer: shown above seekbar during seek, with animation */}
             <Animated.View
                 pointerEvents="none"
                 style={[
@@ -340,7 +335,6 @@ const VideoOverlay = ({
                 </Text>
             </Animated.View>
 
-            {/* Bottom: title/description (above seekbar), hidden during seek */}
             <Animated.View
                 style={[
                     styles.bottomSection,
@@ -382,6 +376,7 @@ export const styles = StyleSheet.create({
         justifyContent: "flex-end",
         alignItems: "center",
         gap: RIGHT_GAP,
+        zIndex: 10,
     },
     iconButton: {
         alignItems: "center",

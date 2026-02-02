@@ -62,13 +62,9 @@ const VideoViewComponent = React.memo(
                         .then(() => {
                             try {
                                 player.preload();
-                            } catch (e) {
-                                // Preload error - silently fail
-                            }
+                            } catch {}
                         })
-                        .catch((e) => {
-                            // replaceSourceAsync error - silently fail
-                        });
+                        .catch(() => {});
                 } else if (player.status === "idle") {
                     if (
                         ttffStartTimeRef.current === null &&
@@ -79,9 +75,7 @@ const VideoViewComponent = React.memo(
 
                     try {
                         player.preload();
-                    } catch (e) {
-                        // Preload error - silently fail
-                    }
+                    } catch {}
                 } else if (
                     player.status === "loading" &&
                     ttffStartTimeRef.current === null &&
@@ -90,8 +84,6 @@ const VideoViewComponent = React.memo(
                     ttffStartTimeRef.current = performance.now();
                 }
             }
-            // Note: We don't clear source for videos outside preload window to avoid issues
-            // LegendList will recycle components, so this is safe
         }, [shouldPreload, isActive, player, video.url]);
 
         useEffect(() => {

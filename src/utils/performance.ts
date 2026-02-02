@@ -17,7 +17,7 @@ class PerformanceMonitor {
     private metrics: Metric[] = [];
     private markers: Map<string, number> = new Map();
     private enabled: boolean = PERFORMANCE_MONITOR_ENABLED;
-    private readonly MAX_METRICS = 100; // Limit to prevent memory bloat
+    private readonly MAX_METRICS = 100;
 
     startMark(name: string): void {
         if (!this.enabled) return;
@@ -40,11 +40,8 @@ class PerformanceMonitor {
     ): void {
         if (!this.enabled) return;
 
-        // Limit metadata size to reduce memory usage
         const limitedMetadata = metadata
-            ? Object.fromEntries(
-                  Object.entries(metadata).slice(0, 5) // Keep only first 5 metadata entries
-              )
+            ? Object.fromEntries(Object.entries(metadata).slice(0, 5))
             : undefined;
 
         this.metrics.push({
@@ -54,7 +51,6 @@ class PerformanceMonitor {
             metadata: limitedMetadata,
         });
 
-        // Remove oldest metrics if limit exceeded
         if (this.metrics.length > this.MAX_METRICS) {
             this.metrics = this.metrics.slice(-this.MAX_METRICS);
         }
@@ -116,7 +112,7 @@ export const usePerformanceMetrics = () => {
     React.useEffect(() => {
         const interval = setInterval(() => {
             setMetrics(performanceMonitor.getMetrics());
-        }, 2000); // Update every 2 seconds to reduce overhead
+        }, 2000);
 
         return () => clearInterval(interval);
     }, []);
