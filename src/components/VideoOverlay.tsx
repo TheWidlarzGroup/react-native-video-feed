@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMetrics } from "../contexts/MetricsContext";
+import { useSeek } from "../contexts/SeekContext";
 import { useTabBarLayout } from "../contexts/TabBarLayoutContext";
 import {
     TAB_BAR_BOTTOM_PADDING_MIN,
@@ -22,19 +23,33 @@ import { PERFORMANCE_MONITOR_ENABLED } from "../utils/performance";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PLAY_BUTTON_SIZE = 64;
 const PLAY_BUTTON_HALF = PLAY_BUTTON_SIZE / 2;
-const RIGHT_ICON_SIZE = 40;
-const RIGHT_GAP = 12;
-const RIGHT_ABOVE_DESCRIPTION = 80;
+const RIGHT_ICON_SIZE = 34;
+const RIGHT_ICON_OPACITY = 0.88;
+const RIGHT_GAP = 18;
+/** Same as bottomSection marginBottom so icons align with description */
+const BOTTOM_SECTION_MARGIN = 22;
 const SEEK_BAR_HEIGHT = 3;
 const SEEK_BAR_HIT_SLOP = 14;
 const SEEK_BAR_AREA_HEIGHT = SEEK_BAR_HEIGHT + 2 * SEEK_BAR_HIT_SLOP;
-const BOTTOM_GAP = 8;
+const SEEK_TRACK_SCALE_DRAG = 3;
+const SEEK_TRACK_ANIM_DURATION = 180;
+const BOTTOM_GAP = 4;
 const OVERLAY_HORIZONTAL_PADDING = 14;
+const SEEK_TIMER_ANIM_DURATION = 200;
+const SEEK_TIMER_OFFSET_ABOVE_BAR = 48;
+
+function formatSeekTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 interface VideoOverlayProps {
     isVisible: boolean;
     isPaused: boolean;
     progress?: number;
+    duration?: number;
     onSeek?: (progress: number) => void;
 }
 
@@ -42,28 +57,64 @@ const VideoOverlay = ({
     isVisible,
     isPaused,
     progress = 0,
+    duration = 0,
     onSeek,
 }: VideoOverlayProps) => {
     const insets = useSafeAreaInsets();
     const { toggleMetrics } = useMetrics();
+    const { setSeeking } = useSeek();
     const { tabBarHeight: measuredTabBarHeight } = useTabBarLayout();
+    const setSeekingRef = useRef(setSeeking);
+    setSeekingRef.current = setSeeking;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const playButtonAnim = useRef(new Animated.Value(0)).current;
 
     const fallbackTabBarHeight =
         Platform.OS === "android"
             ? TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_PADDING_MIN
-            : TAB_BAR_HEIGHT + Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
+            : TAB_BAR_HEIGHT +
+              Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
     const tabBarHeight = measuredTabBarHeight ?? fallbackTabBarHeight;
     const bottomPadding = tabBarHeight + BOTTOM_GAP;
     const seekBarBottom = tabBarHeight - SEEK_BAR_HIT_SLOP;
-    const rightColumnBottom = bottomPadding + RIGHT_ABOVE_DESCRIPTION;
+    const rightColumnBottom = bottomPadding + BOTTOM_SECTION_MARGIN;
 
     const [seekingProgress, setSeekingProgress] = useState<number | null>(null);
     const trackLayoutRef = useRef({ x: 0, width: 1 });
     const seekTrackRef = useRef<View>(null);
     const onSeekRef = useRef(onSeek);
     const progressRef = useRef(progress);
+    const trackScaleY = useRef(new Animated.Value(1)).current;
+    const descOpacity = useRef(new Animated.Value(1)).current;
+    const seekTimerOpacity = useRef(new Animated.Value(0)).current;
+    const isDraggingRef = useRef(false);
+
+    const hideSeekState = useRef(() => {
+        setSeekingRef.current(false);
+        isDraggingRef.current = false;
+        Animated.parallel([
+            Animated.timing(trackScaleY, {
+                toValue: 1,
+                duration: SEEK_TRACK_ANIM_DURATION,
+                useNativeDriver: true,
+            }),
+            Animated.timing(descOpacity, {
+                toValue: 1,
+                duration: SEEK_TIMER_ANIM_DURATION,
+                useNativeDriver: true,
+            }),
+            Animated.timing(seekTimerOpacity, {
+                toValue: 0,
+                duration: SEEK_TIMER_ANIM_DURATION,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }).current;
+
+    const showSeekDescTimerTransition = useRef(() => {
+        descOpacity.setValue(0);
+        seekTimerOpacity.setValue(1);
+    }).current;
 
     onSeekRef.current = onSeek;
     progressRef.current = progress;
@@ -79,6 +130,7 @@ const VideoOverlay = ({
             onPanResponderGrant: (evt) => {
                 const seek = onSeekRef.current;
                 if (!seek) return;
+                isDraggingRef.current = false;
                 const { locationX } = evt.nativeEvent;
                 const { width: trackW } = trackLayoutRef.current;
                 const p =
@@ -87,10 +139,20 @@ const VideoOverlay = ({
                         : progressRef.current;
                 setSeekingProgress(p);
                 seek(p);
+                setSeekingRef.current(true);
+                showSeekDescTimerTransition();
             },
             onPanResponderMove: (evt) => {
                 const seek = onSeekRef.current;
                 if (!seek) return;
+                if (!isDraggingRef.current) {
+                    isDraggingRef.current = true;
+                    Animated.timing(trackScaleY, {
+                        toValue: SEEK_TRACK_SCALE_DRAG,
+                        duration: SEEK_TRACK_ANIM_DURATION,
+                        useNativeDriver: true,
+                    }).start();
+                }
                 const moveX = evt.nativeEvent.pageX;
                 const { x: trackX, width: trackW } = trackLayoutRef.current;
                 const p =
@@ -102,6 +164,11 @@ const VideoOverlay = ({
             },
             onPanResponderRelease: () => {
                 setSeekingProgress(null);
+                hideSeekState();
+            },
+            onPanResponderTerminate: () => {
+                setSeekingProgress(null);
+                hideSeekState();
             },
         })
     ).current;
@@ -169,7 +236,7 @@ const VideoOverlay = ({
                     <Ionicons
                         name="heart"
                         size={RIGHT_ICON_SIZE}
-                        color="#fff"
+                        color={`rgba(255,255,255,${RIGHT_ICON_OPACITY})`}
                     />
                     <Text style={styles.iconLabel}>1.2K</Text>
                 </TouchableOpacity>
@@ -177,7 +244,7 @@ const VideoOverlay = ({
                     <Ionicons
                         name="chatbubble"
                         size={RIGHT_ICON_SIZE}
-                        color="#fff"
+                        color={`rgba(255,255,255,${RIGHT_ICON_OPACITY})`}
                     />
                     <Text style={styles.iconLabel}>345</Text>
                 </TouchableOpacity>
@@ -185,7 +252,7 @@ const VideoOverlay = ({
                     <MaterialCommunityIcons
                         name="share"
                         size={RIGHT_ICON_SIZE}
-                        color="#fff"
+                        color={`rgba(255,255,255,${RIGHT_ICON_OPACITY})`}
                     />
                     <Text style={styles.iconLabel}>Share</Text>
                 </TouchableOpacity>
@@ -197,7 +264,7 @@ const VideoOverlay = ({
                         <Ionicons
                             name="stats-chart"
                             size={RIGHT_ICON_SIZE}
-                            color="#fff"
+                            color={`rgba(255,255,255,${RIGHT_ICON_OPACITY})`}
                         />
                         <Text style={styles.iconLabel}>Metrics</Text>
                     </TouchableOpacity>
@@ -229,7 +296,14 @@ const VideoOverlay = ({
                 }}
                 {...(onSeek ? panResponder.panHandlers : {})}
             >
-                <View style={styles.seekBarTrack}>
+                <Animated.View
+                    style={[
+                        styles.seekBarTrack,
+                        {
+                            transform: [{ scaleY: trackScaleY }],
+                        },
+                    ]}
+                >
                     <View
                         style={[
                             styles.seekBarFill,
@@ -241,27 +315,50 @@ const VideoOverlay = ({
                             },
                         ]}
                     />
-                </View>
+                </Animated.View>
             </View>
 
-            {/* Bottom: title/description (above seekbar) */}
-            <View
+            {/* Seek timer: shown above seekbar during seek, with animation */}
+            <Animated.View
+                pointerEvents="none"
+                style={[
+                    styles.seekTimer,
+                    {
+                        bottom:
+                            seekBarBottom +
+                            SEEK_BAR_AREA_HEIGHT +
+                            SEEK_TIMER_OFFSET_ABOVE_BAR,
+                        opacity: seekTimerOpacity,
+                    },
+                ]}
+            >
+                <Text style={styles.seekTimerText}>
+                    {formatSeekTime(
+                        displayProgress * (duration > 0 ? duration : 0),
+                    )}{" / "}
+                    {formatSeekTime(duration > 0 ? duration : 0)}
+                </Text>
+            </Animated.View>
+
+            {/* Bottom: title/description (above seekbar), hidden during seek */}
+            <Animated.View
                 style={[
                     styles.bottomSection,
-                    { marginBottom: SEEK_BAR_AREA_HEIGHT },
+                    { marginBottom: BOTTOM_SECTION_MARGIN, opacity: descOpacity },
                 ]}
             >
                 <View style={styles.captionArea}>
-                    <Text style={styles.captionTitle} numberOfLines={1}>
-                        @username · Video title placeholder
+                    <Text style={styles.captionUsername} numberOfLines={1}>
+                        @username
                     </Text>
-                    <Text style={styles.captionDesc} numberOfLines={2}>
-                        First line of video description.
-                        {"\n"}
-                        Second line of description.
+                    <Text style={styles.captionDescLine1}>
+                        Video title placeholder. Placeholder description here.
+                    </Text>
+                    <Text style={styles.captionDescLine2}>
+                        More placeholder description here.
                     </Text>
                 </View>
-            </View>
+            </Animated.View>
         </Animated.View>
     );
 };
@@ -290,9 +387,9 @@ export const styles = StyleSheet.create({
         alignItems: "center",
     },
     iconLabel: {
-        color: "#fff",
-        fontSize: 13,
-        marginTop: 5,
+        color: `rgba(255,255,255,${RIGHT_ICON_OPACITY})`,
+        fontSize: 12,
+        marginTop: 4,
         fontWeight: "600",
         textShadowColor: "rgba(0,0,0,0.8)",
         textShadowOffset: { width: 0, height: 1 },
@@ -327,22 +424,45 @@ export const styles = StyleSheet.create({
         backgroundColor: "#fff",
         borderRadius: SEEK_BAR_HEIGHT / 2,
     },
+    seekTimer: {
+        position: "absolute",
+        alignSelf: "center",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        backgroundColor: "rgba(0,0,0,0.65)",
+        borderRadius: 8,
+    },
+    seekTimerText: {
+        color: "#fff",
+        fontSize: 20,
+        fontWeight: "600",
+    },
     captionArea: {
         paddingRight: 88,
     },
-    captionTitle: {
+    captionUsername: {
         color: "#fff",
         fontSize: 14,
-        fontWeight: "600",
+        fontWeight: "700",
+        marginBottom: 2,
         textShadowColor: "rgba(0,0,0,0.8)",
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 2,
     },
-    captionDesc: {
-        color: "rgba(255,255,255,0.9)",
+    captionDescLine1: {
+        color: "rgba(255,255,255,0.92)",
         fontSize: 13,
-        marginTop: 4,
-        minHeight: 36,
+        lineHeight: 18,
+        marginTop: 0,
+        textShadowColor: "rgba(0,0,0,0.8)",
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+    },
+    captionDescLine2: {
+        color: "rgba(255,255,255,0.92)",
+        fontSize: 13,
+        lineHeight: 18,
+        marginTop: 2,
         textShadowColor: "rgba(0,0,0,0.8)",
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 2,

@@ -9,6 +9,7 @@ import {
     View,
 } from "react-native";
 import { LegendList, LegendListRef, ViewToken } from "@legendapp/list";
+import { useSeek } from "../contexts/SeekContext";
 import useVideoFeed from "../hooks/useVideoFeed";
 import { Video } from "../types";
 import VideoViewComponent from "./VideoViewComponent";
@@ -27,6 +28,7 @@ const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0.95;
 type Direction = "up" | "down";
 
 const VideoFeedList = () => {
+    const { seeking } = useSeek();
     const { videos, loading, error } = useVideoFeed();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
@@ -179,6 +181,7 @@ const VideoFeedList = () => {
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     extraData={currentIndex}
+                    scrollEnabled={!seeking}
                     pagingEnabled
                     showsVerticalScrollIndicator={false}
                     snapToInterval={itemHeight}

@@ -4,6 +4,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import { VideoFeedList, BottomTabBar, PerformanceMonitor } from "./components";
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 import { MetricsProvider } from "./contexts/MetricsContext";
+import { SeekProvider } from "./contexts/SeekContext";
 import { TabBarLayoutProvider } from "./contexts/TabBarLayoutContext";
 import { useFPSMonitor } from "./hooks/useFPSMonitor";
 
@@ -14,18 +15,19 @@ export default function App() {
         <SafeAreaProvider>
             <MetricsProvider>
                 <TabBarLayoutProvider>
-                    <SafeAreaView edges={[]} style={styles.safeArea}>
-                        <StatusBar
-                            style="light"
-                            translucent={Platform.OS === "android"}
-                        />
-                        <View style={styles.container}>
-                            <VideoFeedList />
-
-                            <BottomTabBar />
-                            <PerformanceMonitor />
-                        </View>
-                    </SafeAreaView>
+                    <SeekProvider>
+                        <SafeAreaView edges={[]} style={styles.safeArea}>
+                            <StatusBar
+                                style="light"
+                                translucent={Platform.OS === "android"}
+                            />
+                            <View style={styles.container}>
+                                <VideoFeedList />
+                                <BottomTabBar />
+                                <PerformanceMonitor />
+                            </View>
+                        </SafeAreaView>
+                    </SeekProvider>
                 </TabBarLayoutProvider>
             </MetricsProvider>
         </SafeAreaProvider>

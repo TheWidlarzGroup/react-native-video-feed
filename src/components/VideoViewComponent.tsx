@@ -245,6 +245,7 @@ const VideoViewComponent = React.memo(
                     isVisible={isActive}
                     isPaused={userPaused}
                     progress={progress}
+                    duration={player?.duration ?? 0}
                     onSeek={
                         isActive && player
                             ? (p: number) => {
