@@ -21,7 +21,7 @@ import {
 import { PERFORMANCE_MONITOR_ENABLED } from "../utils/performance";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const PLAY_BUTTON_SIZE = 64;
+const PLAY_BUTTON_SIZE = 88;
 const PLAY_BUTTON_HALF = PLAY_BUTTON_SIZE / 2;
 const RIGHT_ICON_SIZE = 34;
 const RIGHT_ICON_OPACITY = 0.88;
@@ -226,7 +226,7 @@ const VideoOverlay = ({
                 ]}
                 pointerEvents="none"
             >
-                <Ionicons name="play" size={40} color="#fff" />
+                <Ionicons name="play" size={66} color="#fff" />
             </Animated.View>
 
             <View style={[styles.overlayRight, { bottom: rightColumnBottom }]}>
@@ -419,7 +419,6 @@ export const styles = StyleSheet.create({
         width: PLAY_BUTTON_SIZE,
         height: PLAY_BUTTON_SIZE,
         borderRadius: PLAY_BUTTON_HALF,
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
         justifyContent: "center",
         alignItems: "center",
     },
