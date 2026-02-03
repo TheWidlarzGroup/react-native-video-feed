@@ -12,7 +12,7 @@ import VideoOverlay from "./VideoOverlay";
 import { performanceMonitor } from "../utils/performance";
 
 const { width: screenWidth } = Dimensions.get("window");
-const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height - 64);
+const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height);
 
 interface VideoViewComponentProps {
     video: Video;
@@ -29,6 +29,7 @@ const VideoViewComponent = React.memo(
         itemHeight = FALLBACK_ITEM_HEIGHT,
     }: VideoViewComponentProps) {
         const [userPaused, setUserPaused] = useState(false);
+        const [progress, setProgress] = useState(0);
         const wasActiveRef = useRef(isActive);
         const ttffStartTimeRef = useRef<number | null>(null);
         const ttffMeasuredRef = useRef(false);
@@ -61,13 +62,9 @@ const VideoViewComponent = React.memo(
                         .then(() => {
                             try {
                                 player.preload();
-                            } catch (e) {
-                                // Preload error - silently fail
-                            }
+                            } catch {}
                         })
-                        .catch((e) => {
-                            // replaceSourceAsync error - silently fail
-                        });
+                        .catch(() => {});
                 } else if (player.status === "idle") {
                     if (
                         ttffStartTimeRef.current === null &&
@@ -78,9 +75,7 @@ const VideoViewComponent = React.memo(
 
                     try {
                         player.preload();
-                    } catch (e) {
-                        // Preload error - silently fail
-                    }
+                    } catch {}
                 } else if (
                     player.status === "loading" &&
                     ttffStartTimeRef.current === null &&
@@ -89,8 +84,6 @@ const VideoViewComponent = React.memo(
                     ttffStartTimeRef.current = performance.now();
                 }
             }
-            // Note: We don't clear source for videos outside preload window to avoid issues
-            // LegendList will recycle components, so this is safe
         }, [shouldPreload, isActive, player, video.url]);
 
         useEffect(() => {
@@ -102,6 +95,7 @@ const VideoViewComponent = React.memo(
                 visibleAtRef.current = null;
                 perceivedMeasuredRef.current = false;
                 videoIdRef.current = video.id;
+                setProgress(0);
             }
 
             if (isActive && !wasActiveRef.current) {
@@ -159,10 +153,19 @@ const VideoViewComponent = React.memo(
                         player.muted = true;
                         player.pause();
                     }
-                },
+                }
             );
             return () => subscription.remove();
         }, [isActive, userPaused, player]);
+
+        useEvent(player, "onProgress", () => {
+            if (!isActive) return;
+            const dur = player.duration;
+            const cur = player.currentTime;
+            if (dur > 0 && Number.isFinite(cur)) {
+                setProgress(Math.min(1, Math.max(0, cur / dur)));
+            }
+        });
 
         useEvent(player, "onStatusChange", () => {
             if (
@@ -190,10 +193,14 @@ const VideoViewComponent = React.memo(
             ) {
                 const perceivedTtff = performance.now() - visibleAtRef.current;
                 if (perceivedTtff >= -100 && perceivedTtff < 10000) {
-                    performanceMonitor.recordMetric("perceived_ttff", perceivedTtff, {
-                        videoId: video.id,
-                        status: player.status,
-                    });
+                    performanceMonitor.recordMetric(
+                        "perceived_ttff",
+                        perceivedTtff,
+                        {
+                            videoId: video.id,
+                            status: player.status,
+                        }
+                    );
                     perceivedMeasuredRef.current = true;
                     visibleAtRef.current = null;
                 }
@@ -220,12 +227,31 @@ const VideoViewComponent = React.memo(
                 <VideoView
                     player={player}
                     controls={false}
+                    resizeMode="cover"
                     style={{ ...styles.video, height: itemHeight }}
                 />
                 <TouchableWithoutFeedback onPress={togglePause}>
                     <View style={styles.touchArea} />
                 </TouchableWithoutFeedback>
-                <VideoOverlay isVisible={isActive} isPaused={userPaused} />
+                <VideoOverlay
+                    isVisible={isActive}
+                    isPaused={userPaused}
+                    progress={progress}
+                    duration={player?.duration ?? 0}
+                    onSeek={
+                        isActive && player
+                            ? (p: number) => {
+                                  const dur = player.duration;
+                                  if (dur > 0 && Number.isFinite(dur)) {
+                                      const t =
+                                          Math.max(0, Math.min(1, p)) * dur;
+                                      player.seekTo(t);
+                                      setProgress(p);
+                                  }
+                              }
+                            : undefined
+                    }
+                />
             </View>
         );
     },
@@ -236,7 +262,7 @@ const VideoViewComponent = React.memo(
             prevProps.shouldPreload === nextProps.shouldPreload &&
             prevProps.itemHeight === nextProps.itemHeight
         );
-    },
+    }
 );
 
 const styles = StyleSheet.create({

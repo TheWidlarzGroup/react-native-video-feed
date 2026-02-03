@@ -1,8 +1,11 @@
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { VideoFeedList, BottomTabBar, PerformanceMonitor } from "./components";
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
+import { MetricsProvider } from "./contexts/MetricsContext";
+import { SeekProvider } from "./contexts/SeekContext";
+import { TabBarLayoutProvider } from "./contexts/TabBarLayoutContext";
 import { useFPSMonitor } from "./hooks/useFPSMonitor";
 
 export default function App() {
@@ -10,14 +13,23 @@ export default function App() {
 
     return (
         <SafeAreaProvider>
-            <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
-                <View style={styles.container}>
-                    <VideoFeedList />
-                    <StatusBar style="light" />
-                    <BottomTabBar />
-                    <PerformanceMonitor />
-                </View>
-            </SafeAreaView>
+            <MetricsProvider>
+                <TabBarLayoutProvider>
+                    <SeekProvider>
+                        <SafeAreaView edges={[]} style={styles.safeArea}>
+                            <StatusBar
+                                style="light"
+                                translucent={Platform.OS === "android"}
+                            />
+                            <View style={styles.container}>
+                                <VideoFeedList />
+                                <BottomTabBar />
+                                <PerformanceMonitor />
+                            </View>
+                        </SafeAreaView>
+                    </SeekProvider>
+                </TabBarLayoutProvider>
+            </MetricsProvider>
         </SafeAreaProvider>
     );
 }

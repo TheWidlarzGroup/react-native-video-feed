@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
     View,
     Text,
@@ -11,11 +11,12 @@ import {
     performanceMonitor,
     PERFORMANCE_MONITOR_ENABLED,
 } from "../utils/performance";
+import { useMetrics } from "../contexts/MetricsContext";
 
 const PerformanceMonitor = () => {
     if (!PERFORMANCE_MONITOR_ENABLED) return null;
 
-    const [isVisible, setIsVisible] = useState(false);
+    const { metricsOpen, setMetricsOpen } = useMetrics();
     const { metrics, summary, clear } = usePerformanceMetrics();
 
     const handleExport = () => {
@@ -23,15 +24,8 @@ const PerformanceMonitor = () => {
         console.log("Performance Metrics:", json);
     };
 
-    if (!isVisible) {
-        return (
-            <TouchableOpacity
-                style={styles.toggleButton}
-                onPress={() => setIsVisible(true)}
-            >
-                <Text style={styles.toggleButtonText}>📊</Text>
-            </TouchableOpacity>
-        );
+    if (!metricsOpen) {
+        return null;
     }
 
     const formatValue = (value: number | null, unit: string = "ms") => {
@@ -50,7 +44,7 @@ const PerformanceMonitor = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={styles.button}
-                    onPress={() => setIsVisible(false)}
+                    onPress={() => setMetricsOpen(false)}
                 >
                     <Text style={styles.buttonText}>Hide</Text>
                 </TouchableOpacity>
@@ -118,29 +112,14 @@ const PerformanceMonitor = () => {
 const styles = StyleSheet.create({
     container: {
         position: "absolute",
-        top: 100,
-        right: 10,
+        top: 52,
+        right: 14,
         width: 300,
         maxHeight: 400,
         backgroundColor: "rgba(0, 0, 0, 0.9)",
         borderRadius: 8,
         padding: 12,
         zIndex: 9999,
-    },
-    toggleButton: {
-        position: "absolute",
-        top: 100,
-        right: 10,
-        width: 40,
-        height: 40,
-        backgroundColor: "rgba(0, 0, 0, 0.7)",
-        borderRadius: 20,
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 9999,
-    },
-    toggleButtonText: {
-        fontSize: 20,
     },
     header: {
         marginBottom: 8,
@@ -156,10 +135,12 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     button: {
-        backgroundColor: "#007AFF",
+        backgroundColor: "rgba(255,255,255,0.15)",
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 4,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.25)",
     },
     buttonText: {
         color: "#fff",

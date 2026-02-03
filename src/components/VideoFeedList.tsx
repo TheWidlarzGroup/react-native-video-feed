@@ -9,16 +9,14 @@ import {
     View,
 } from "react-native";
 import { LegendList, LegendListRef, ViewToken } from "@legendapp/list";
+import { useSeek } from "../contexts/SeekContext";
 import useVideoFeed from "../hooks/useVideoFeed";
 import { Video } from "../types";
 import VideoViewComponent from "./VideoViewComponent";
 import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const BOTTOM_BAR_HEIGHT = 64;
-const FALLBACK_ITEM_HEIGHT = Math.floor(
-    Dimensions.get("window").height - BOTTOM_BAR_HEIGHT,
-);
+const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height);
 
 const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
 const PRELOAD_BEHIND = 1;
@@ -30,11 +28,12 @@ const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0.95;
 type Direction = "up" | "down";
 
 const VideoFeedList = () => {
+    const { seeking } = useSeek();
     const { videos, loading, error } = useVideoFeed();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
-        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
+        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null
     );
     const indexRef = useRef(currentIndex);
 
@@ -86,7 +85,7 @@ const VideoFeedList = () => {
                 applyUpdate();
             }
         },
-        [updateIndex, videos.length],
+        [updateIndex, videos.length]
     );
 
     const renderItem = useCallback(
@@ -102,8 +101,7 @@ const VideoFeedList = () => {
                 isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
 
             const shouldPreloadBehind =
-                !isAhead &&
-                Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
+                !isAhead && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
 
@@ -131,7 +129,7 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [currentIndex, direction, itemHeight],
+        [currentIndex, direction, itemHeight]
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
@@ -183,6 +181,7 @@ const VideoFeedList = () => {
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     extraData={currentIndex}
+                    scrollEnabled={!seeking}
                     pagingEnabled
                     showsVerticalScrollIndicator={false}
                     snapToInterval={itemHeight}
