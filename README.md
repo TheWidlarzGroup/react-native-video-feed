@@ -50,7 +50,7 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 
 **TheWidlarzGroup**
 
-[![TheWidlarzGroup](assets/baners/twg-dark.png)](https://thewidlarzgroup.com)
+[![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://thewidlarzgroup.com)
 
 ---
 
