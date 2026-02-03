@@ -38,7 +38,7 @@ Supported by **TheWidlarzGroup** – the group of React Native Special Task Forc
 
 ### 🤝 Can I hire you?
 
-TWG provides both **free and commercial support** for this project. Feel free to [contact us](https://thewidlarzgroup.com) to build something awesome together 🚀
+TWG provides **commercial support** for this project. Feel free to [contact us](https://thewidlarzgroup.com) to build something awesome together 🚀
 
 Need a custom use case, an extra feature, or want to speed up the feed even more? We can help with that too – reach out for consulting or implementation.
 
