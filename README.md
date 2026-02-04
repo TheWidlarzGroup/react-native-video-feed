@@ -1,4 +1,4 @@
-# React Native Video v7 – TikTok-style feed
+# React Native Live Feed demo – TikTok-style feed
 
 A vertical video feed in the style of TikTok built with **React Native Video v7** and **@legendapp/list** using **Expo**: smooth scroll, one-video snap, preloading, and iOS/Android optimizations.
 
@@ -50,28 +50,20 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 -   **Scroll lag**: delay from scroll start to first frame (requestAnimationFrame).
 -   Enabled in `__DEV__`; view via 📊 button (PerformanceMonitor).
 
----
 
-## Architecture
+## Why use this demo?
 
-### Components
+1. **Production-ready patterns** – Asymmetric preload (1 behind, 3–5 ahead), viewability-based play, and source loading only in the preload window. Copy these patterns into your app instead of figuring them out from scratch.
 
-```
-App.tsx
-├── VideoFeedList (scroll, viewability, preload, Android placeholder)
-│   └── VideoViewComponent (single item)
-│       ├── VideoView (react-native-video)
-│       └── VideoOverlay (play, icons)
-└── BottomTabBar
-```
+2. **React Native Video v7 + Legend List** – See how `useVideoPlayer`, `replaceSourceAsync`, `preload()` and a virtualized list work together for a TikTok-style feed on both iOS and Android with one codebase.
 
-### VideoFeedList
+3. **Performance from day one** – Virtualization, platform-tuned preload counts, and optional dev metrics (TTFF, perceived TTFF, FPS, scroll lag) so you can measure and improve before launch.
 
--   **Current index**: `onViewableItemsChanged` → `currentIndex`; on Android the update runs in `requestAnimationFrame`.
--   **Preload**: asymmetric – **1 behind**, **3 ahead** (Android) or **5 ahead** (iOS). `PRELOAD_BEHIND=1`, `PRELOAD_AHEAD` platform-specific.
--   **Scroll direction**: `direction` used for preloading “ahead” vs “behind”.
--   **Placeholder (Android only)**: When `!shouldPreload && !isActive` → black `View` instead of `VideoViewComponent`.
--   **Android layout**: `measuredHeight` from `onLayout`; list renders only when `measuredHeight !== null`; `snapToInterval` / `getFixedItemSize` / item `itemHeight` all use the same measured height.
+4. **HLS-ready** – Built for real HLS streams (`.m3u8`); preload and playback are tuned for manifest-based sources, so you can plug in your own CDN or ad-stitched URLs without reworking the player logic.
+
+5. **TikTok-style UX** – One video per swipe, play on 30% visibility, tap to pause and overlay controls (like, comment, share). The scroll and snap behaviour are tuned per platform so the feed feels native on both iOS and Android.
+
+
 
 **Configuration:**
 
