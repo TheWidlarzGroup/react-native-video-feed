@@ -2,7 +2,7 @@
  * Placeholder types and stubs for possible feed features.
  * These are NOT implemented – they define the shape of functionality that could be added.
  *
- * To add these features: contact the repo owner (see README).
+ * To add these features: contact here: https://sdk.thewidlarzgroup.com/
  */
 
 // ---------------------------------------------------------------------------

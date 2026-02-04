@@ -23,8 +23,7 @@ See [FEED_EXTENSIONS.md](./FEED_EXTENSIONS.md) for possible enhancements (DAI/vi
 Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup) or [LinkedIn](https://www.linkedin.com/company/the-widlarz-group/).
 
 **TheWidlarzGroup**
-
-[![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://thewidlarzgroup.com)
+[![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://sdk.thewidlarzgroup.com/)
 
 ## Features
 
