@@ -76,7 +76,9 @@ const VideoOverlay = ({
               Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
     const tabBarHeight = measuredTabBarHeight ?? fallbackTabBarHeight;
     const bottomPadding = tabBarHeight + BOTTOM_GAP;
-    const seekBarBottom = tabBarHeight - SEEK_BAR_HIT_SLOP;
+    // Seekbar: na Androidzie dokładnie na górnej krawędzi tab bara (bez BOTTOM_GAP), na iOS z małym gapem.
+    const seekBarBottom =
+        Platform.OS === "android" ? tabBarHeight : tabBarHeight + 12;
     const rightColumnBottom = bottomPadding + BOTTOM_SECTION_MARGIN;
 
     const [seekingProgress, setSeekingProgress] = useState<number | null>(null);

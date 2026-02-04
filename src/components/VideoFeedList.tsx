@@ -16,7 +16,9 @@ import VideoViewComponent from "./VideoViewComponent";
 import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const FALLBACK_ITEM_HEIGHT = Math.floor(Dimensions.get("window").height);
+const FALLBACK_ITEM_HEIGHT = Math.ceil(Dimensions.get("window").height);
+/** Dodatkowe px wysokości itemu – przy snapie poprzedni item jest w pełni nad viewportem (brak przerwy u góry). */
+const ITEM_OVERLAP = 4;
 
 const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
 const PRELOAD_BEHIND = 1;
@@ -38,11 +40,11 @@ const VideoFeedList = () => {
     const indexRef = useRef(currentIndex);
 
     const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
-        const h = Math.floor(e.nativeEvent.layout.height);
+        const h = Math.ceil(e.nativeEvent.layout.height);
         if (h > 0) setMeasuredHeight(h);
     }, []);
 
-    const itemHeight = measuredHeight ?? FALLBACK_ITEM_HEIGHT;
+    const itemHeight = (measuredHeight ?? FALLBACK_ITEM_HEIGHT) + ITEM_OVERLAP;
     const listReady = measuredHeight !== null;
     const listRef = useRef<LegendListRef | null>(null);
     const viewabilityConfig = useRef({
@@ -199,6 +201,7 @@ const VideoFeedList = () => {
                     bounces={false}
                     overScrollMode="never"
                     style={styles.list}
+                    contentContainerStyle={styles.listContent}
                 />
             ) : null}
         </View>
@@ -213,6 +216,10 @@ const styles = StyleSheet.create({
     list: {
         flex: 1,
         width: SCREEN_WIDTH,
+    },
+    listContent: {
+        paddingVertical: 0,
+        flexGrow: 1,
     },
     placeholder: {
         backgroundColor: "black",

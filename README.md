@@ -1,4 +1,4 @@
-# React Native Live Feed demo – TikTok-style feed
+# React Native Video Feed demo – TikTok-style feed
 
 A vertical video feed in the style of TikTok built with **React Native Video v7** and **@legendapp/list** using **Expo**: smooth scroll, one-video snap, preloading, and iOS/Android optimizations.
 
