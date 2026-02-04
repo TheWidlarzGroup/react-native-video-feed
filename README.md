@@ -1,28 +1,26 @@
-# React Native Video Feed demo – TikTok-style feed
+# React Native Video Feed – TikTok-style feed demo
 
 A vertical video feed in the style of TikTok built with **React Native Video v7** and **@legendapp/list** using **Expo**: smooth scroll, one-video snap, preloading, and iOS/Android optimizations.
 
 ## Made by TheWidlarzGroup
 
-Supported by **TheWidlarzGroup** – the group of React Native Special Task Forces. If you like this project, give it a star ⭐
+Supported by **TheWidlarzGroup** – the software agency with focus on audio and video in React Native. Maintainers of [react-native-video](https://github.com/TheWidlarzGroup/react-native-video). Builders of a [PRO player](https://sdk.thewidlarzgroup.com/). If you like this project, give it a star ⭐
 
-**E-mail** us if you have any questions or just want to talk: [hi@thewidlarzgroup.com](mailto:hi@thewidlarzgroup.com)
 
 ### 🤝 Can I hire you?
 
-TWG provides **commercial support** for this project. Feel free to [contact us](https://thewidlarzgroup.com) to build something awesome together 🚀
+TWG provides **commercial support** for this project.
 
 Need a custom use case, an extra feature, or want to speed up the feed even more? We can help with that too – reach out for consulting or implementation.
 
-See [FEED_EXTENSIONS.md](./FEED_EXTENSIONS.md) for possible enhancements (DAI/video ads, user tracking, UI customization, mixed content, navigation). These are not implemented – [contact us](https://thewidlarzgroup.com) to add them.
+See [FEED_EXTENSIONS.md](./FEED_EXTENSIONS.md) for possible enhancements (DAI/video ads, user tracking, UI customization, mixed content, navigation).
 
-**Request a consultation:** [Contact us](https://thewidlarzgroup.com) 😎
+[Request a consultation](mailto:hi@thewidlarzgroup.com) 😎
 
 ### 🌐 Follow us
 
 Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup) or [LinkedIn](https://www.linkedin.com/company/the-widlarz-group/).
 
-**TheWidlarzGroup**
 [![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://sdk.thewidlarzgroup.com/)
 
 ## Features
@@ -115,9 +113,9 @@ const CYCLE_COUNT = Platform.OS === "android" ? 10 : 20;
 ## Installation & run
 
 ```bash
-bun install
-bun run ios
-bun run android
+pnpm install
+pnpm run ios
+pnpm run android
 ```
 
 ## Dependencies
