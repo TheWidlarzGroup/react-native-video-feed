@@ -1,6 +1,6 @@
 # Feed Extensions & Possible Features
 
-An overview of **that could be implemented** to add to this React Native Video v7 feed. These features are **not implemented** in this repository. Contact [TheWidlarzGroup](https://thewidlarzgroup.com) (hi@thewidlarzgroup.com) to discuss implementation.
+An overview of **that can be implemented** to add to this React Native Video v7 feed. These features are **not implemented** in this repository. Contact [TheWidlarzGroup](https://thewidlarzgroup.com) (hi@thewidlarzgroup.com) to discuss implementation.
 
 ## Ads
 
