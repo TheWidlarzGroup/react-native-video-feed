@@ -23,7 +23,7 @@ const PRELOAD_BEHIND = 1;
 const DRAW_DISTANCE_MULTIPLIER = Platform.OS === "android" ? 2 : 3;
 const SCROLL_EVENT_THROTTLE = Platform.OS === "android" ? 32 : 16;
 const USE_PLACEHOLDER_OUTSIDE_PRELOAD = Platform.OS === "android";
-const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0.95;
+const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0;
 
 type Direction = "up" | "down";
 
@@ -182,7 +182,7 @@ const VideoFeedList = () => {
                     keyExtractor={keyExtractor}
                     extraData={currentIndex}
                     scrollEnabled={!seeking}
-                    pagingEnabled
+                    pagingEnabled={Platform.OS === "android"}
                     showsVerticalScrollIndicator={false}
                     snapToInterval={itemHeight}
                     snapToAlignment="start"
