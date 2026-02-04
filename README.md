@@ -6,7 +6,7 @@ A vertical video feed in the style of TikTok built with **React Native Video v7*
 
 ### Video playback
 
--   **HLS**: Sources are HLS streams from Netlify (`/v0/index.m3u8` … `/v9/index.m3u8`).
+-   **HLS**: Sources are HLS streams (`/v0/index.m3u8` … `/v9/index.m3u8`).
 -   **Start at 30% visibility**: Active video starts when 30% visible in the viewport.
 -   **One video per swipe**: `snapToInterval` + `disableIntervalMomentum={true}` – one swipe advances or goes back one video.
 -   **Tap to pause/play**: Tap on video to pause/resume; centered play button shows when paused.
