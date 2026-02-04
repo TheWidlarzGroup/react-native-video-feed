@@ -1,6 +1,30 @@
 # React Native Video v7 – TikTok-style feed
 
-A vertical video feed in the style of TikTok built with **React Native Video v7** and **@legendapp/list**: smooth scroll, one-video snap, preloading, and iOS/Android optimizations.
+A vertical video feed in the style of TikTok built with **React Native Video v7** and **@legendapp/list** using **Expo**: smooth scroll, one-video snap, preloading, and iOS/Android optimizations.
+
+## Made by TheWidlarzGroup
+
+Supported by **TheWidlarzGroup** – the group of React Native Special Task Forces. If you like this project, give it a star ⭐
+
+**E-mail** us if you have any questions or just want to talk: [hi@thewidlarzgroup.com](mailto:hi@thewidlarzgroup.com)
+
+### 🤝 Can I hire you?
+
+TWG provides **commercial support** for this project. Feel free to [contact us](https://thewidlarzgroup.com) to build something awesome together 🚀
+
+Need a custom use case, an extra feature, or want to speed up the feed even more? We can help with that too – reach out for consulting or implementation.
+
+See [FEED_EXTENSIONS.md](./FEED_EXTENSIONS.md) for possible enhancements (DAI/video ads, user tracking, UI customization, mixed content, navigation). These are not implemented – [contact us](https://thewidlarzgroup.com) to add them.
+
+**Request a consultation:** [Contact us](https://thewidlarzgroup.com) 😎
+
+### 🌐 Follow us
+
+Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup) or [LinkedIn](https://www.linkedin.com/company/the-widlarz-group/).
+
+**TheWidlarzGroup**
+
+[![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://thewidlarzgroup.com)
 
 ## Features
 
@@ -15,12 +39,9 @@ A vertical video feed in the style of TikTok built with **React Native Video v7*
 ### Performance
 
 -   **Asymmetric preload**: 1 video behind (for quick scroll back), **3 ahead** on Android and **5 ahead** on iOS (`PRELOAD_BEHIND=1`, `PRELOAD_AHEAD` platform-specific). Fewer players than symmetric preload.
--   **Placeholder on Android**: Outside the preload window a black placeholder is rendered instead of `VideoViewComponent` (fewer players = better performance).
--   **Measured height**: On Android the list mounts only after `onLayout`; `itemHeight` = measured container height (correct layout, no “peek” of the next video).
 -   **Virtualization**: LegendList with fixed item size, memoization, recycling.
 -   **Source only in preload window**: `replaceSourceAsync` / `preload()` only for active and items within preload range.
 -   **Scroll feel**: `decelerationRate` – Android 0.98 (slower scroll), iOS 0.95; `disableIntervalMomentum={true}` for one video per swipe.
--   **AppState**: Playback pauses when app goes to background.
 
 ### Metrics (dev)
 
@@ -29,28 +50,6 @@ A vertical video feed in the style of TikTok built with **React Native Video v7*
 -   **FPS**: number of `requestAnimationFrame` callbacks per second (≈ display refresh rate).
 -   **Scroll lag**: delay from scroll start to first frame (requestAnimationFrame).
 -   Enabled in `__DEV__`; view via 📊 button (PerformanceMonitor).
-
-## Made by TheWidlarzGroup
-
-Supported by **TheWidlarzGroup** – the group of React Native Special Task Forces. If you like this project, give it a star ⭐
-
-**E-mail** us if you have any questions or just want to talk: [hi@thewidlarzgroup.com](mailto:hi@thewidlarzgroup.com)
-
-### 🤝 Can I hire you?
-
-TWG provides **commercial support** for this project. Feel free to [contact us](https://thewidlarzgroup.com) to build something awesome together 🚀
-
-Need a custom use case, an extra feature, or want to speed up the feed even more? We can help with that too – reach out for consulting or implementation.
-
-**Request a consultation:** [Contact us](https://thewidlarzgroup.com) 😎
-
-### 🌐 Follow us
-
-Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup) or [LinkedIn](https://www.linkedin.com/company/the-widlarz-group/).
-
-**TheWidlarzGroup**
-
-[![TheWidlarzGroup](assets/baners/rnv-banner.png)](https://thewidlarzgroup.com)
 
 ---
 
@@ -97,8 +96,6 @@ App.tsx
 
 -   Video list from `SOURCES` (10 HLS URLs); `CYCLE_COUNT`: **Android 10**, **iOS 20** (100 vs 200 videos).
 -   Returns `videos`, `loading`, `error`, `refetch`.
-
-
 
 ## Configuration
 
