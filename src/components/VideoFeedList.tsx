@@ -35,7 +35,7 @@ const VideoFeedList = () => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState<Direction>("up");
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
-        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null
+        Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
     );
     const indexRef = useRef(currentIndex);
 
@@ -87,7 +87,7 @@ const VideoFeedList = () => {
                 applyUpdate();
             }
         },
-        [updateIndex, videos.length]
+        [updateIndex, videos.length],
     );
 
     const renderItem = useCallback(
@@ -131,7 +131,7 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [currentIndex, direction, itemHeight]
+        [currentIndex, direction, itemHeight],
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
@@ -184,7 +184,7 @@ const VideoFeedList = () => {
                     keyExtractor={keyExtractor}
                     extraData={currentIndex}
                     scrollEnabled={!seeking}
-                    pagingEnabled={Platform.OS === "android"}
+                    pagingEnabled={true}
                     showsVerticalScrollIndicator={false}
                     snapToInterval={itemHeight}
                     snapToAlignment="start"
