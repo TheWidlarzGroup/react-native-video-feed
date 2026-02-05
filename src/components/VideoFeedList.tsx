@@ -175,7 +175,7 @@ const VideoFeedList = () => {
                     snapToAlignment="start"
                     decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
-                    disableIntervalMomentum={Platform.OS === "android"}
+                    disableIntervalMomentum={true}
                     onViewableItemsChanged={handleVideoChange}
                     onScrollBeginDrag={handleScrollBeginDrag}
                     onMomentumScrollEnd={handleScrollEnd}
