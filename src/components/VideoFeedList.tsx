@@ -51,8 +51,6 @@ const VideoFeedList = () => {
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 30,
     }).current;
-    const scrollStartTimeRef = useRef<number | null>(null);
-    const scrollLagFrameRef = useRef<number | null>(null);
 
     const handleVideoChange = useCallback(
         ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -129,7 +127,7 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [itemHeight],
+        [currentIndex, direction, itemHeight],
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
