@@ -27,7 +27,8 @@ const RIGHT_ICON_SIZE = 34;
 const RIGHT_ICON_OPACITY = 0.88;
 const RIGHT_GAP = 18;
 const AVATAR_SIZE = 40;
-const BOTTOM_SECTION_MARGIN = 22; // aligns right icons with description bottom
+/** Vertical offset so the right icon column aligns with the bottom of the description block. */
+const BOTTOM_SECTION_MARGIN = 22;
 const SEEK_BAR_HEIGHT = 3;
 const SEEK_BAR_HIT_SLOP = 14;
 const SEEK_BAR_AREA_HEIGHT = SEEK_BAR_HEIGHT + 2 * SEEK_BAR_HIT_SLOP;
