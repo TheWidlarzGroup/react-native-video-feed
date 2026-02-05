@@ -17,7 +17,7 @@ import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const FALLBACK_ITEM_HEIGHT = Math.ceil(Dimensions.get("window").height);
-/** Dodatkowe px wysokości itemu – przy snapie poprzedni item jest w pełni nad viewportem (brak przerwy u góry). */
+/** Extra item height so when snapping, the previous item is fully off-screen (no top gap). */
 const ITEM_OVERLAP = 4;
 
 const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
