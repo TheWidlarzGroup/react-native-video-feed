@@ -35,10 +35,10 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 
 ### Performance
 
--   **Asymmetric preload**: 1 video behind (for quick scroll back), **3 ahead** on Android and **5 ahead** on iOS (`PRELOAD_BEHIND=1`, `PRELOAD_AHEAD` platform-specific). Fewer players than symmetric preload.
--   **Virtualization**: LegendList with fixed item size, memoization, recycling.
--   **Source only in preload window**: `replaceSourceAsync` / `preload()` only for active and items within preload range.
--   **Scroll feel**: `decelerationRate` – Android 0.98 (slower scroll), iOS 0.95; `disableIntervalMomentum={true}` for one video per swipe.
+-   **Preload window**: 1 behind, **3 ahead on both platforms** (plus immediate neighbors stay preloaded). Placeholders outside the window to reduce active players.
+-   **Virtualization**: LegendList with fixed item size and draw distance 2× item height.
+-   **Source loading only in window**: `shouldPreload` gates when a player is hydrated.
+-   **Scroll feel**: `decelerationRate` 0.98, paging enabled; `disableIntervalMomentum` 
 
 ### Metrics (dev)
 
@@ -51,7 +51,7 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 
 ## Why use this demo?
 
-1. **Production-ready patterns** – Asymmetric preload (1 behind, 3–5 ahead), viewability-based play, and source loading only in the preload window. Copy these patterns into your app instead of figuring them out from scratch.
+1. **Production-ready patterns** – Asymmetric preload (1 behind, 3 ahead), viewability-based play, and source loading only in the preload window. Copy these patterns into your app instead of figuring them out from scratch.
 
 2. **React Native Video v7 + Legend List** – See how `useVideoPlayer`, `replaceSourceAsync`, `preload()` and a virtualized list work together for a TikTok-style feed on both iOS and Android with one codebase.
 
@@ -75,10 +75,9 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 
 ### VideoViewComponent
 
--   **Player**: `useVideoPlayer(video.url)`; loop, mute.
--   **Source**: In effect when `shouldPreload || isActive` – `replaceSourceAsync({ uri: video.url })` or `preload()` when `idle`; TTFF (load) start set before call, or when status is already `loading` (fallback so Android still records TTFF).
+-   **Player**: `useVideoPlayer(video.url)`; loop, muted.
+-   **Hydration**: Player only rendered for items in the preload/active window (placeholders elsewhere).
 -   **Play/pause**: Play when `isActive && !userPaused && AppState === "active"`; pause otherwise; reset `currentTime` when becoming active.
--   **Perceived TTFF**: Start when `isActive` becomes true; record when `readyToPlay` (or 0 if already ready when becoming active).
 -   **Height**: `itemHeight` from list (measured layout on Android).
 
 ### useVideoFeed
@@ -93,7 +92,7 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 In `VideoFeedList.tsx`:
 
 ```typescript
-const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_AHEAD = 3;
 const PRELOAD_BEHIND = 1;
 ```
 
@@ -107,15 +106,16 @@ const CYCLE_COUNT = Platform.OS === "android" ? 10 : 20;
 
 ### Snap / momentum
 
--   `disableIntervalMomentum={true}` – after releasing finger, scroll stops on the next/previous video (one per swipe).
--   `DECELERATION_RATE`: Android 0.98 (slower), iOS 0.95 – scroll decay.
+-   Paging enabled on both platforms, `snapToInterval` per item height.
+-   `disableIntervalMomentum` on Android for one-video snap.
+-   `DECELERATION_RATE`: 0.98 on both platforms.
 
 ## Installation & run
 
 ```bash
-pnpm install
-pnpm run ios
-pnpm run android
+bun install
+bun run ios
+bun run android
 ```
 
 ## Dependencies

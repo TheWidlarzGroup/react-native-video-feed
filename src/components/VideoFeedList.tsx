@@ -17,28 +17,29 @@ import { performanceMonitor } from "../utils/performance";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const FALLBACK_ITEM_HEIGHT = Math.ceil(Dimensions.get("window").height);
-/** Extra item height so when snapping, the previous item is fully off-screen (no top gap). */
+
 const ITEM_OVERLAP = 4;
 
-const PRELOAD_AHEAD = Platform.OS === "android" ? 3 : 5;
+const PRELOAD_AHEAD = 3;
 const PRELOAD_BEHIND = 1;
-const DRAW_DISTANCE_MULTIPLIER = Platform.OS === "android" ? 2 : 3;
-const SCROLL_EVENT_THROTTLE = Platform.OS === "android" ? 32 : 16;
-const USE_PLACEHOLDER_OUTSIDE_PRELOAD = Platform.OS === "android";
-const DECELERATION_RATE = Platform.OS === "android" ? 0.98 : 0;
+const DRAW_DISTANCE_MULTIPLIER = 2;
+const SCROLL_EVENT_THROTTLE = 16;
+const USE_PLACEHOLDER_OUTSIDE_PRELOAD = true;
+const DECELERATION_RATE = 0.98;
 
 type Direction = "up" | "down";
 
 const VideoFeedList = () => {
     const { seeking } = useSeek();
     const { videos, loading, error } = useVideoFeed();
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [direction, setDirection] = useState<Direction>("up");
+    const currentIndexRef = useRef(0);
+    const directionRef = useRef<Direction>("up");
+    const isScrollingRef = useRef(false);
+    const rafPendingRef = useRef(false);
+    const [renderTrigger, setRenderTrigger] = useState(0);
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
         Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
     );
-    const indexRef = useRef(currentIndex);
-
     const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
         const h = Math.ceil(e.nativeEvent.layout.height);
         if (h > 0) setMeasuredHeight(h);
@@ -50,17 +51,6 @@ const VideoFeedList = () => {
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 30,
     }).current;
-    const scrollStartTimeRef = useRef<number | null>(null);
-    const scrollLagFrameRef = useRef<number | null>(null);
-
-    const updateIndex = useCallback((nextIndex: number, maxIndex: number) => {
-        const clamped = Math.max(0, Math.min(nextIndex, maxIndex));
-
-        if (clamped === indexRef.current) return;
-
-        indexRef.current = clamped;
-        setCurrentIndex(clamped);
-    }, []);
 
     const handleVideoChange = useCallback(
         ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -70,28 +60,30 @@ const VideoFeedList = () => {
             }
             const maxIndex = videos.length - 1;
             const clampedIndex = Math.max(0, Math.min(nextIndex, maxIndex));
-            const prevIndex = indexRef.current;
+            const prevIndex = currentIndexRef.current;
 
             if (clampedIndex === prevIndex) {
                 return;
             }
 
-            const applyUpdate = () => {
-                setDirection(clampedIndex > prevIndex ? "up" : "down");
-                updateIndex(clampedIndex, maxIndex);
-            };
+            directionRef.current = clampedIndex > prevIndex ? "up" : "down";
+            currentIndexRef.current = clampedIndex;
 
-            if (Platform.OS === "android") {
-                requestAnimationFrame(applyUpdate);
-            } else {
-                applyUpdate();
+            if (!rafPendingRef.current) {
+                rafPendingRef.current = true;
+                requestAnimationFrame(() => {
+                    setRenderTrigger((t) => t + 1);
+                    rafPendingRef.current = false;
+                });
             }
         },
-        [updateIndex, videos.length],
+        [videos.length],
     );
 
     const renderItem = useCallback(
         ({ item, index }: { item: Video; index: number }) => {
+            const currentIndex = currentIndexRef.current;
+            const direction = directionRef.current;
             const isActive = index === currentIndex;
             const distanceFromActive = index - currentIndex;
             const isAhead =
@@ -105,7 +97,11 @@ const VideoFeedList = () => {
             const shouldPreloadBehind =
                 !isAhead && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
-            const shouldPreload = shouldPreloadAhead || shouldPreloadBehind;
+            const shouldPreload =
+                isActive ||
+                Math.abs(distanceFromActive) <= 1 || // always keep neighbor preloaded
+                shouldPreloadAhead ||
+                shouldPreloadBehind;
 
             if (
                 USE_PLACEHOLDER_OUTSIDE_PRELOAD &&
@@ -137,23 +133,12 @@ const VideoFeedList = () => {
     const keyExtractor = useCallback((item: Video) => item.id, []);
 
     const handleScrollBeginDrag = useCallback(() => {
-        scrollStartTimeRef.current = performance.now();
+        isScrollingRef.current = true;
+    }, []);
 
-        if (scrollLagFrameRef.current !== null) {
-            cancelAnimationFrame(scrollLagFrameRef.current);
-        }
-
-        scrollLagFrameRef.current = requestAnimationFrame(() => {
-            if (scrollStartTimeRef.current !== null) {
-                const scrollLag =
-                    performance.now() - scrollStartTimeRef.current;
-                performanceMonitor.recordMetric("scroll_lag", scrollLag, {
-                    timestamp: Date.now(),
-                });
-                scrollStartTimeRef.current = null;
-            }
-            scrollLagFrameRef.current = null;
-        });
+    const handleScrollEnd = useCallback(() => {
+        isScrollingRef.current = false;
+        requestAnimationFrame(() => setRenderTrigger((t) => t + 1));
     }, []);
 
     if (loading) {
@@ -182,7 +167,7 @@ const VideoFeedList = () => {
                     data={videos}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
-                    extraData={currentIndex}
+                    extraData={renderTrigger}
                     scrollEnabled={!seeking}
                     pagingEnabled={true}
                     showsVerticalScrollIndicator={false}
@@ -193,6 +178,8 @@ const VideoFeedList = () => {
                     disableIntervalMomentum={true}
                     onViewableItemsChanged={handleVideoChange}
                     onScrollBeginDrag={handleScrollBeginDrag}
+                    onMomentumScrollEnd={handleScrollEnd}
+                    onScrollEndDrag={handleScrollEnd}
                     viewabilityConfig={viewabilityConfig}
                     estimatedItemSize={itemHeight}
                     getFixedItemSize={() => itemHeight}
