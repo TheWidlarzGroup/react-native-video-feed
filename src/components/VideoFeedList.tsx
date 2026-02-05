@@ -68,11 +68,9 @@ const VideoFeedList = () => {
                 return;
             }
 
-            // Update refs only during scroll; trigger render later
             directionRef.current = clampedIndex > prevIndex ? "up" : "down";
             currentIndexRef.current = clampedIndex;
 
-            // Trigger a render on the next frame (throttled to one rAF)
             if (!rafPendingRef.current) {
                 rafPendingRef.current = true;
                 requestAnimationFrame(() => {
