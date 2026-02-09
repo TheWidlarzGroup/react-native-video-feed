@@ -34,7 +34,6 @@ const VideoFeedList = () => {
     const { videos, loading, error } = useVideoFeed();
     const currentIndexRef = useRef(0);
     const directionRef = useRef<Direction>("down");
-    const isScrollingRef = useRef(false);
     const scrollStartTimestampRef = useRef<number | null>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
@@ -137,45 +136,28 @@ const VideoFeedList = () => {
     const keyExtractor = useCallback((item: Video) => item.id, []);
 
     const handleScrollBeginDrag = useCallback(() => {
-        isScrollingRef.current = true;
-        const scrollStartTimestamp = performance.now();
-        scrollStartTimestampRef.current = scrollStartTimestamp;
+        if (__DEV__) {
+            const scrollStartTimestamp = performance.now();
+            scrollStartTimestampRef.current = scrollStartTimestamp;
 
-        requestAnimationFrame(() => {
-            if (scrollStartTimestampRef.current !== null) {
-                const renderTimestamp = performance.now();
-                const lag = renderTimestamp - scrollStartTimestampRef.current;
-                performanceMonitor.recordMetric("scroll_lag", lag, {
-                    timestamp: Date.now(),
-                    platform: Platform.OS,
-                });
-                scrollStartTimestampRef.current = null;
-            }
-        });
-    }, []);
-
-    const handleScroll = useCallback(() => {
-        if (scrollStartTimestampRef.current !== null) {
-            const scrollTimestamp = performance.now();
             requestAnimationFrame(() => {
                 if (scrollStartTimestampRef.current !== null) {
                     const renderTimestamp = performance.now();
-                    const lag =
-                        renderTimestamp - scrollStartTimestampRef.current;
+                    const lag = renderTimestamp - scrollStartTimestampRef.current;
                     performanceMonitor.recordMetric("scroll_lag", lag, {
                         timestamp: Date.now(),
                         platform: Platform.OS,
-                        duringScroll: true,
                     });
-                    scrollStartTimestampRef.current = performance.now();
+                    scrollStartTimestampRef.current = null;
                 }
             });
         }
     }, []);
 
     const handleScrollEnd = useCallback(() => {
-        isScrollingRef.current = false;
-        scrollStartTimestampRef.current = null;
+        if (__DEV__) {
+            scrollStartTimestampRef.current = null;
+        }
     }, []);
 
     const getFixedItemSize = useCallback(() => itemHeight, [itemHeight]);
@@ -219,6 +201,7 @@ const VideoFeedList = () => {
         <View style={styles.container} onLayout={handleContainerLayout}>
             {listReady ? (
                 <LegendList
+                    snapScrollingIOS={true}
                     ref={listRef}
                     data={videos}
                     renderItem={renderItem}
@@ -236,7 +219,6 @@ const VideoFeedList = () => {
                         viewabilityConfigCallbackPairs
                     }
                     onScrollBeginDrag={handleScrollBeginDrag}
-                    onScroll={handleScroll}
                     onMomentumScrollEnd={handleScrollEnd}
                     onScrollEndDrag={handleScrollEnd}
                     estimatedItemSize={itemHeight}
