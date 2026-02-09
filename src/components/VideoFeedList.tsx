@@ -53,10 +53,10 @@ const VideoFeedList = () => {
     const listRef = useRef<LegendListRef | null>(null);
 
     const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 50, 
-        waitForInteraction: false, 
-        minimumViewTime: 0, 
-        viewAreaCoveragePercentThreshold: 50, 
+        itemVisiblePercentThreshold: 50,
+        waitForInteraction: false,
+        minimumViewTime: 0,
+        viewAreaCoveragePercentThreshold: 50,
     }).current;
 
     const handleVideoChange = useCallback(
@@ -94,10 +94,12 @@ const VideoFeedList = () => {
             const isNeighbor = Math.abs(distanceFromActive) <= 1;
             const shouldPreloadAhead =
                 isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
+            const isBehind =
+                direction === "down"
+                    ? distanceFromActive < 0
+                    : distanceFromActive > 0;
             const shouldPreloadBehind =
-                !isAhead &&
-                distanceFromActive < 0 &&
-                Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
+                isBehind && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload =
                 isActive ||
@@ -230,7 +232,9 @@ const VideoFeedList = () => {
                     decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
                     disableIntervalMomentum={true}
-                    viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+                    viewabilityConfigCallbackPairs={
+                        viewabilityConfigCallbackPairs
+                    }
                     onScrollBeginDrag={handleScrollBeginDrag}
                     onScroll={handleScroll}
                     onMomentumScrollEnd={handleScrollEnd}
