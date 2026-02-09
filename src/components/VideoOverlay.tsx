@@ -77,9 +77,7 @@ const VideoOverlay = ({
               Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
     const tabBarHeight = measuredTabBarHeight ?? fallbackTabBarHeight;
     const bottomPadding = tabBarHeight + BOTTOM_GAP;
-    // Seekbar: on Android flush with tab bar top edge; on iOS with a small gap above.
-    const seekBarBottom =
-        Platform.OS === "android" ? tabBarHeight : tabBarHeight + 12;
+    const seekBarBottom = tabBarHeight - 6;
     const rightColumnBottom = bottomPadding + BOTTOM_SECTION_MARGIN;
 
     const [seekingProgress, setSeekingProgress] = useState<number | null>(null);
@@ -173,7 +171,7 @@ const VideoOverlay = ({
                 setSeekingProgress(null);
                 hideSeekState();
             },
-        })
+        }),
     ).current;
 
     useEffect(() => {
@@ -340,7 +338,7 @@ const VideoOverlay = ({
             >
                 <Text style={styles.seekTimerText}>
                     {formatSeekTime(
-                        displayProgress * (duration > 0 ? duration : 0)
+                        displayProgress * (duration > 0 ? duration : 0),
                     )}
                     {" / "}
                     {formatSeekTime(duration > 0 ? duration : 0)}

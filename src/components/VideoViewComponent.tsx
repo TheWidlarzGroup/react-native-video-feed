@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     AppState,
     Dimensions,
     StyleSheet,
@@ -222,6 +223,10 @@ const VideoViewComponent = React.memo(
             setUserPaused(!userPaused);
         };
 
+        // Show loading indicator when video is active but not ready to play
+        // This provides visual feedback during the first swipe when video is still loading
+        const isLoading = isActive && player.status !== "readyToPlay" && !userPaused;
+
         return (
             <View style={[styles.container, { height: itemHeight }]}>
                 <VideoView
@@ -233,6 +238,11 @@ const VideoViewComponent = React.memo(
                 <TouchableWithoutFeedback onPress={togglePause}>
                     <View style={styles.touchArea} />
                 </TouchableWithoutFeedback>
+                {isLoading && (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#fff" />
+                    </View>
+                )}
                 <VideoOverlay
                     isVisible={isActive}
                     isPaused={userPaused}
@@ -280,6 +290,16 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
+    },
+    loadingContainer: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.3)",
     },
 });
 

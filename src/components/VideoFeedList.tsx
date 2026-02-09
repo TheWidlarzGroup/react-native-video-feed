@@ -20,7 +20,7 @@ const FALLBACK_ITEM_HEIGHT = Math.ceil(Dimensions.get("window").height);
 
 const ITEM_OVERLAP = 4;
 
-const PRELOAD_AHEAD = 3;
+const PRELOAD_AHEAD = 5;
 const PRELOAD_BEHIND = 1;
 const DRAW_DISTANCE_MULTIPLIER = 2;
 const SCROLL_EVENT_THROTTLE = 16;
@@ -33,9 +33,10 @@ const VideoFeedList = () => {
     const { seeking } = useSeek();
     const { videos, loading, error } = useVideoFeed();
     const currentIndexRef = useRef(0);
-    const directionRef = useRef<Direction>("up");
+    const directionRef = useRef<Direction>("down");
     const isScrollingRef = useRef(false);
     const rafPendingRef = useRef(false);
+    const scrollStartTimestampRef = useRef<number | null>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
         Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
@@ -49,7 +50,10 @@ const VideoFeedList = () => {
     const listReady = measuredHeight !== null;
     const listRef = useRef<LegendListRef | null>(null);
     const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 30,
+        itemVisiblePercentThreshold: 50,
+        waitForInteraction: false,
+        minimumViewTime: 0,
+        viewAreaCoveragePercentThreshold: 50,
     }).current;
 
     const handleVideoChange = useCallback(
@@ -66,7 +70,7 @@ const VideoFeedList = () => {
                 return;
             }
 
-            directionRef.current = clampedIndex > prevIndex ? "up" : "down";
+            directionRef.current = clampedIndex > prevIndex ? "down" : "up";
             currentIndexRef.current = clampedIndex;
 
             if (!rafPendingRef.current) {
@@ -127,18 +131,52 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [currentIndex, direction, itemHeight],
+        [renderTrigger, itemHeight],
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
 
     const handleScrollBeginDrag = useCallback(() => {
         isScrollingRef.current = true;
+        const scrollStartTimestamp = performance.now();
+        scrollStartTimestampRef.current = scrollStartTimestamp;
+
+        requestAnimationFrame(() => {
+            if (scrollStartTimestampRef.current !== null) {
+                const renderTimestamp = performance.now();
+                const lag = renderTimestamp - scrollStartTimestampRef.current;
+                performanceMonitor.recordMetric("scroll_lag", lag, {
+                    timestamp: Date.now(),
+                    platform: Platform.OS,
+                });
+                scrollStartTimestampRef.current = null;
+            }
+        });
+    }, []);
+
+    const handleScroll = useCallback(() => {
+        if (scrollStartTimestampRef.current !== null) {
+            const scrollTimestamp = performance.now();
+            requestAnimationFrame(() => {
+                if (scrollStartTimestampRef.current !== null) {
+                    const renderTimestamp = performance.now();
+                    const lag =
+                        renderTimestamp - scrollStartTimestampRef.current;
+                    performanceMonitor.recordMetric("scroll_lag", lag, {
+                        timestamp: Date.now(),
+                        platform: Platform.OS,
+                        duringScroll: true,
+                    });
+                    scrollStartTimestampRef.current = performance.now();
+                }
+            });
+        }
     }, []);
 
     const handleScrollEnd = useCallback(() => {
         isScrollingRef.current = false;
-        requestAnimationFrame(() => setRenderTrigger((t) => t + 1));
+        // Don't trigger render here - let viewability handle it naturally
+        // Additional render can cause video stutter/cut at scroll end
     }, []);
 
     if (loading) {
@@ -176,11 +214,16 @@ const VideoFeedList = () => {
                     decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
                     disableIntervalMomentum={true}
-                    onViewableItemsChanged={handleVideoChange}
+                    viewabilityConfigCallbackPairs={[
+                        {
+                            viewabilityConfig,
+                            onViewableItemsChanged: handleVideoChange,
+                        },
+                    ]}
                     onScrollBeginDrag={handleScrollBeginDrag}
+                    onScroll={handleScroll}
                     onMomentumScrollEnd={handleScrollEnd}
                     onScrollEndDrag={handleScrollEnd}
-                    viewabilityConfig={viewabilityConfig}
                     estimatedItemSize={itemHeight}
                     getFixedItemSize={() => itemHeight}
                     drawDistance={itemHeight * DRAW_DISTANCE_MULTIPLIER}
