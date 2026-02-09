@@ -91,15 +91,17 @@ const VideoFeedList = () => {
                     ? distanceFromActive > 0
                     : distanceFromActive < 0;
 
+            const isNeighbor = Math.abs(distanceFromActive) <= 1;
             const shouldPreloadAhead =
                 isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
-
             const shouldPreloadBehind =
-                !isAhead && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
+                !isAhead &&
+                distanceFromActive < 0 &&
+                Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload =
                 isActive ||
-                Math.abs(distanceFromActive) <= 1 ||
+                isNeighbor ||
                 shouldPreloadAhead ||
                 shouldPreloadBehind;
 
