@@ -28,14 +28,14 @@ Stay up to date with news – follow us on [Twitter](https://x.com/WidlarzGroup)
 ### Video playback
 
 -   **HLS**: Sources are HLS streams (`/v0/index.m3u8` … `/v9/index.m3u8`).
--   **Start at 30% visibility**: Active video starts when 30% visible in the viewport.
+-   **Start at 50% visibility**: Active video starts when 50% visible in the viewport.
 -   **One video per swipe**: `snapToInterval` + `disableIntervalMomentum={true}` – one swipe advances or goes back one video.
 -   **Tap to pause/play**: Tap on video to pause/resume; centered play button shows when paused.
 -   **Overlay**: Like, comment, share icons and animated play button.
 
 ### Performance
 
--   **Preload window**: 1 behind, **3 ahead on both platforms** (plus immediate neighbors stay preloaded). Placeholders outside the window to reduce active players.
+-   **Preload window**: 1 behind, **5 ahead on both platforms** (plus immediate neighbors stay preloaded). Placeholders outside the window to reduce active players.
 -   **Virtualization**: LegendList with fixed item size and draw distance 2× item height.
 -   **Source loading only in window**: `shouldPreload` gates when a player is hydrated.
 -   **Scroll feel**: `decelerationRate` 0.98, paging enabled; `disableIntervalMomentum` 

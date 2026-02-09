@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
@@ -75,11 +75,20 @@ const VideoOverlay = ({
             ? TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_PADDING_MIN
             : TAB_BAR_HEIGHT +
               Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
-    const tabBarHeight = measuredTabBarHeight ?? fallbackTabBarHeight;
+
+    const [stableTabBarHeight, setStableTabBarHeight] = useState<number>(
+        fallbackTabBarHeight,
+    );
+
+    useEffect(() => {
+        if (measuredTabBarHeight !== null) {
+            setStableTabBarHeight(measuredTabBarHeight);
+        }
+    }, [measuredTabBarHeight]);
+
+    const tabBarHeight = stableTabBarHeight;
     const bottomPadding = tabBarHeight + BOTTOM_GAP;
-    // Seekbar: on Android flush with tab bar top edge; on iOS with a small gap above.
-    const seekBarBottom =
-        Platform.OS === "android" ? tabBarHeight : tabBarHeight + 12;
+    const seekBarBottom = tabBarHeight - 6;
     const rightColumnBottom = bottomPadding + BOTTOM_SECTION_MARGIN;
 
     const [seekingProgress, setSeekingProgress] = useState<number | null>(null);
@@ -173,7 +182,7 @@ const VideoOverlay = ({
                 setSeekingProgress(null);
                 hideSeekState();
             },
-        })
+        }),
     ).current;
 
     useEffect(() => {
@@ -340,7 +349,7 @@ const VideoOverlay = ({
             >
                 <Text style={styles.seekTimerText}>
                     {formatSeekTime(
-                        displayProgress * (duration > 0 ? duration : 0)
+                        displayProgress * (duration > 0 ? duration : 0),
                     )}
                     {" / "}
                     {formatSeekTime(duration > 0 ? duration : 0)}

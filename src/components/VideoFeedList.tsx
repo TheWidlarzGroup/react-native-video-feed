@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -20,7 +20,7 @@ const FALLBACK_ITEM_HEIGHT = Math.ceil(Dimensions.get("window").height);
 
 const ITEM_OVERLAP = 4;
 
-const PRELOAD_AHEAD = 3;
+const PRELOAD_AHEAD = 5;
 const PRELOAD_BEHIND = 1;
 const DRAW_DISTANCE_MULTIPLIER = 2;
 const SCROLL_EVENT_THROTTLE = 16;
@@ -33,9 +33,8 @@ const VideoFeedList = () => {
     const { seeking } = useSeek();
     const { videos, loading, error } = useVideoFeed();
     const currentIndexRef = useRef(0);
-    const directionRef = useRef<Direction>("up");
-    const isScrollingRef = useRef(false);
-    const rafPendingRef = useRef(false);
+    const directionRef = useRef<Direction>("down");
+    const scrollStartTimestampRef = useRef<number | null>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
         Platform.OS === "ios" ? FALLBACK_ITEM_HEIGHT : null,
@@ -45,11 +44,18 @@ const VideoFeedList = () => {
         if (h > 0) setMeasuredHeight(h);
     }, []);
 
-    const itemHeight = (measuredHeight ?? FALLBACK_ITEM_HEIGHT) + ITEM_OVERLAP;
-    const listReady = measuredHeight !== null;
+    const itemHeight = useMemo(
+        () => (measuredHeight ?? FALLBACK_ITEM_HEIGHT) + ITEM_OVERLAP,
+        [measuredHeight],
+    );
+    const listReady = useMemo(() => measuredHeight !== null, [measuredHeight]);
     const listRef = useRef<LegendListRef | null>(null);
+
     const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 30,
+        itemVisiblePercentThreshold: 50,
+        waitForInteraction: false,
+        minimumViewTime: 0,
+        viewAreaCoveragePercentThreshold: 50,
     }).current;
 
     const handleVideoChange = useCallback(
@@ -66,16 +72,9 @@ const VideoFeedList = () => {
                 return;
             }
 
-            directionRef.current = clampedIndex > prevIndex ? "up" : "down";
+            directionRef.current = clampedIndex > prevIndex ? "down" : "up";
             currentIndexRef.current = clampedIndex;
-
-            if (!rafPendingRef.current) {
-                rafPendingRef.current = true;
-                requestAnimationFrame(() => {
-                    setRenderTrigger((t) => t + 1);
-                    rafPendingRef.current = false;
-                });
-            }
+            setRenderTrigger((t) => t + 1);
         },
         [videos.length],
     );
@@ -91,15 +90,19 @@ const VideoFeedList = () => {
                     ? distanceFromActive > 0
                     : distanceFromActive < 0;
 
+            const isNeighbor = Math.abs(distanceFromActive) <= 1;
             const shouldPreloadAhead =
                 isAhead && Math.abs(distanceFromActive) <= PRELOAD_AHEAD;
-
+            const isBehind =
+                direction === "down"
+                    ? distanceFromActive < 0
+                    : distanceFromActive > 0;
             const shouldPreloadBehind =
-                !isAhead && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
+                isBehind && Math.abs(distanceFromActive) <= PRELOAD_BEHIND;
 
             const shouldPreload =
                 isActive ||
-                Math.abs(distanceFromActive) <= 1 || // always keep neighbor preloaded
+                isNeighbor ||
                 shouldPreloadAhead ||
                 shouldPreloadBehind;
 
@@ -127,19 +130,54 @@ const VideoFeedList = () => {
                 />
             );
         },
-        [currentIndex, direction, itemHeight],
+        [renderTrigger, itemHeight],
     );
 
     const keyExtractor = useCallback((item: Video) => item.id, []);
 
     const handleScrollBeginDrag = useCallback(() => {
-        isScrollingRef.current = true;
+        if (__DEV__) {
+            const scrollStartTimestamp = performance.now();
+            scrollStartTimestampRef.current = scrollStartTimestamp;
+
+            requestAnimationFrame(() => {
+                if (scrollStartTimestampRef.current !== null) {
+                    const renderTimestamp = performance.now();
+                    const lag = renderTimestamp - scrollStartTimestampRef.current;
+                    performanceMonitor.recordMetric("scroll_lag", lag, {
+                        timestamp: Date.now(),
+                        platform: Platform.OS,
+                    });
+                    scrollStartTimestampRef.current = null;
+                }
+            });
+        }
     }, []);
 
     const handleScrollEnd = useCallback(() => {
-        isScrollingRef.current = false;
-        requestAnimationFrame(() => setRenderTrigger((t) => t + 1));
+        if (__DEV__) {
+            scrollStartTimestampRef.current = null;
+        }
     }, []);
+
+    const getFixedItemSize = useCallback(() => itemHeight, [itemHeight]);
+
+    const viewabilityConfigCallbackPairs = useMemo(
+        () => [
+            {
+                viewabilityConfig,
+                onViewableItemsChanged: handleVideoChange,
+            },
+        ],
+        [handleVideoChange],
+    );
+
+    const getItemType = useCallback(() => "video", []);
+
+    const drawDistance = useMemo(
+        () => itemHeight * DRAW_DISTANCE_MULTIPLIER,
+        [itemHeight],
+    );
 
     if (loading) {
         return (
@@ -176,15 +214,16 @@ const VideoFeedList = () => {
                     decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
                     disableIntervalMomentum={true}
-                    onViewableItemsChanged={handleVideoChange}
+                    viewabilityConfigCallbackPairs={
+                        viewabilityConfigCallbackPairs
+                    }
                     onScrollBeginDrag={handleScrollBeginDrag}
                     onMomentumScrollEnd={handleScrollEnd}
                     onScrollEndDrag={handleScrollEnd}
-                    viewabilityConfig={viewabilityConfig}
                     estimatedItemSize={itemHeight}
-                    getFixedItemSize={() => itemHeight}
-                    drawDistance={itemHeight * DRAW_DISTANCE_MULTIPLIER}
-                    getItemType={() => "video"}
+                    getFixedItemSize={getFixedItemSize}
+                    drawDistance={drawDistance}
+                    getItemType={getItemType}
                     bounces={false}
                     overScrollMode="never"
                     style={styles.list}
