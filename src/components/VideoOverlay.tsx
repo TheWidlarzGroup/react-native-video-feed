@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
@@ -75,7 +75,18 @@ const VideoOverlay = ({
             ? TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_PADDING_MIN
             : TAB_BAR_HEIGHT +
               Math.max(insets.bottom, TAB_BAR_BOTTOM_PADDING_MIN);
-    const tabBarHeight = measuredTabBarHeight ?? fallbackTabBarHeight;
+
+    const [stableTabBarHeight, setStableTabBarHeight] = useState<number>(
+        fallbackTabBarHeight,
+    );
+
+    useEffect(() => {
+        if (measuredTabBarHeight !== null) {
+            setStableTabBarHeight(measuredTabBarHeight);
+        }
+    }, [measuredTabBarHeight]);
+
+    const tabBarHeight = stableTabBarHeight;
     const bottomPadding = tabBarHeight + BOTTOM_GAP;
     const seekBarBottom = tabBarHeight - 6;
     const rightColumnBottom = bottomPadding + BOTTOM_SECTION_MARGIN;

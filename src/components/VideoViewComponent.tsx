@@ -126,50 +126,50 @@ const VideoViewComponent = React.memo(
                 perceivedMeasuredRef.current = false;
                 setUserPaused(false);
                 
-                if (!currentTimeResetRef.current) {
-                    const shouldReset = !player.isPlaying || player.currentTime < 0.1;
-                    if (shouldReset) {
-                        player.currentTime = 0;
-                        currentTimeResetRef.current = true;
+                if (player.status === "readyToPlay") {
+                    if (!perceivedMeasuredRef.current) {
+                        performanceMonitor.recordMetric("perceived_ttff", 0, {
+                            videoId: video.id,
+                            status: "readyToPlay",
+                            preloaded: true,
+                        });
+                        perceivedMeasuredRef.current = true;
                     }
-                }
-
-                if (
-                    player.status === "readyToPlay" &&
-                    !perceivedMeasuredRef.current
-                ) {
-                    performanceMonitor.recordMetric("perceived_ttff", 0, {
-                        videoId: video.id,
-                        status: "readyToPlay",
-                        preloaded: true,
-                    });
-                    perceivedMeasuredRef.current = true;
                     visibleAtRef.current = null;
+                    
                     if (AppState.currentState === "active") {
-                        player.muted = false;
-                        player.play();
+                        if (!player.isPlaying) {
+                            if (player.currentTime < 0.1) {
+                                player.currentTime = 0;
+                            }
+                            player.muted = false;
+                            player.play();
+                        } else {
+                            player.muted = false;
+                        }
+                    }
+                } else {
+                    if (!player.isPlaying && player.currentTime < 0.1) {
+                        player.currentTime = 0;
                     }
                 }
             } else if (becameInactive) {
                 visibleAtRef.current = null;
                 perceivedMeasuredRef.current = false;
-                currentTimeResetRef.current = false;
-            }
-            
-            if (isActive && player.isPlaying && currentTimeResetRef.current) {
-                currentTimeResetRef.current = false;
             }
 
             const appState = AppState.currentState;
             const shouldPlay =
                 isActive && !userPaused && appState === "active";
 
-            if (shouldPlay) {
-                player.muted = false;
+            if (shouldPlay && player.status === "readyToPlay") {
                 if (!player.isPlaying) {
+                    player.muted = false;
                     player.play();
+                } else {
+                    player.muted = false;
                 }
-            } else {
+            } else if (!shouldPlay) {
                 player.muted = true;
                 if (player.isPlaying) {
                     player.pause();
@@ -254,12 +254,11 @@ const VideoViewComponent = React.memo(
                 currentIsActive &&
                 !currentUserPaused &&
                 AppState.currentState === "active" &&
-                player.status === "readyToPlay"
+                player.status === "readyToPlay" &&
+                !player.isPlaying
             ) {
-                if (!player.isPlaying) {
-                    player.muted = false;
-                    player.play();
-                }
+                player.muted = false;
+                player.play();
             }
         });
 
