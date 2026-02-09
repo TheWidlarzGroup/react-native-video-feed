@@ -201,7 +201,6 @@ const VideoFeedList = () => {
         <View style={styles.container} onLayout={handleContainerLayout}>
             {listReady ? (
                 <LegendList
-                    snapScrollingIOS={true}
                     ref={listRef}
                     data={videos}
                     renderItem={renderItem}
