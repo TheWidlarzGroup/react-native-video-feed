@@ -1,6 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
-    ActivityIndicator,
     AppState,
     Dimensions,
     StyleSheet,
@@ -37,17 +42,27 @@ const VideoViewComponent = React.memo(
         const visibleAtRef = useRef<number | null>(null);
         const perceivedMeasuredRef = useRef(false);
         const videoIdRef = useRef(video.id);
+        const currentTimeResetRef = useRef(false);
+        const isActiveRef = useRef(isActive);
+        const userPausedRef = useRef(userPaused);
 
         const player = useVideoPlayer(video.url, (p) => {
             p.loop = true;
             p.muted = true;
         });
+        
+        useEffect(() => {
+            isActiveRef.current = isActive;
+        }, [isActive]);
+        
+        useEffect(() => {
+            userPausedRef.current = userPaused;
+        }, [userPaused]);
 
         useEffect(() => {
             if (!player) return;
 
             const currentUri = player.source?.uri;
-            const currentStatus = player.status;
 
             if (shouldPreload || isActive) {
                 if (!currentUri || currentUri !== video.url) {
@@ -96,13 +111,29 @@ const VideoViewComponent = React.memo(
                 visibleAtRef.current = null;
                 perceivedMeasuredRef.current = false;
                 videoIdRef.current = video.id;
+                currentTimeResetRef.current = false;
                 setProgress(0);
             }
 
-            if (isActive && !wasActiveRef.current) {
+            const wasActive = wasActiveRef.current;
+            wasActiveRef.current = isActive;
+            const becameActive = isActive && !wasActive;
+            const becameInactive = !isActive && wasActive;
+
+            if (becameActive) {
                 const now = performance.now();
                 visibleAtRef.current = now;
                 perceivedMeasuredRef.current = false;
+                setUserPaused(false);
+                
+                if (!currentTimeResetRef.current) {
+                    const shouldReset = !player.isPlaying || player.currentTime < 0.1;
+                    if (shouldReset) {
+                        player.currentTime = 0;
+                        currentTimeResetRef.current = true;
+                    }
+                }
+
                 if (
                     player.status === "readyToPlay" &&
                     !perceivedMeasuredRef.current
@@ -114,32 +145,39 @@ const VideoViewComponent = React.memo(
                     });
                     perceivedMeasuredRef.current = true;
                     visibleAtRef.current = null;
+                    if (AppState.currentState === "active") {
+                        player.muted = false;
+                        player.play();
+                    }
                 }
-            } else if (!isActive) {
+            } else if (becameInactive) {
                 visibleAtRef.current = null;
                 perceivedMeasuredRef.current = false;
+                currentTimeResetRef.current = false;
+            }
+            
+            if (isActive && player.isPlaying && currentTimeResetRef.current) {
+                currentTimeResetRef.current = false;
             }
 
+            const appState = AppState.currentState;
             const shouldPlay =
-                isActive && !userPaused && AppState.currentState === "active";
+                isActive && !userPaused && appState === "active";
 
             if (shouldPlay) {
                 player.muted = false;
-                player.play();
+                if (!player.isPlaying) {
+                    player.play();
+                }
             } else {
                 player.muted = true;
-                player.pause();
+                if (player.isPlaying) {
+                    player.pause();
+                }
                 if (shouldPreload && !isActive && !userPaused) {
                     player.currentTime = 0;
                 }
             }
-
-            if (isActive && !wasActiveRef.current) {
-                player.currentTime = 0;
-                setUserPaused(false);
-            }
-
-            wasActiveRef.current = isActive;
         }, [isActive, userPaused, player, shouldPreload, video.id]);
 
         useEffect(() => {
@@ -147,20 +185,22 @@ const VideoViewComponent = React.memo(
                 "change",
                 (state) => {
                     if (!player) return;
-                    if (isActive && state === "active" && !userPaused) {
+                    const currentIsActive = isActiveRef.current;
+                    const currentUserPaused = userPausedRef.current;
+                    if (currentIsActive && state === "active" && !currentUserPaused) {
                         player.muted = false;
                         player.play();
                     } else {
                         player.muted = true;
                         player.pause();
                     }
-                }
+                },
             );
             return () => subscription.remove();
-        }, [isActive, userPaused, player]);
+        }, [player]);
 
         useEvent(player, "onProgress", () => {
-            if (!isActive) return;
+            if (!isActiveRef.current) return;
             const dur = player.duration;
             const cur = player.currentTime;
             if (dur > 0 && Number.isFinite(cur)) {
@@ -169,6 +209,9 @@ const VideoViewComponent = React.memo(
         });
 
         useEvent(player, "onStatusChange", () => {
+            const currentIsActive = isActiveRef.current;
+            const currentUserPaused = userPausedRef.current;
+            
             if (
                 ttffStartTimeRef.current !== null &&
                 !ttffMeasuredRef.current &&
@@ -179,7 +222,7 @@ const VideoViewComponent = React.memo(
                     performanceMonitor.recordMetric("ttff", ttff, {
                         videoId: video.id,
                         status: player.status,
-                        wasActive: isActive,
+                        wasActive: currentIsActive,
                     });
                     ttffMeasuredRef.current = true;
                     ttffStartTimeRef.current = null;
@@ -187,7 +230,7 @@ const VideoViewComponent = React.memo(
             }
 
             if (
-                isActive &&
+                currentIsActive &&
                 visibleAtRef.current !== null &&
                 !perceivedMeasuredRef.current &&
                 player.status === "readyToPlay"
@@ -200,7 +243,7 @@ const VideoViewComponent = React.memo(
                         {
                             videoId: video.id,
                             status: player.status,
-                        }
+                        },
                     );
                     perceivedMeasuredRef.current = true;
                     visibleAtRef.current = null;
@@ -208,24 +251,39 @@ const VideoViewComponent = React.memo(
             }
 
             if (
-                isActive &&
-                !userPaused &&
+                currentIsActive &&
+                !currentUserPaused &&
                 AppState.currentState === "active" &&
-                player.status === "readyToPlay" &&
-                !player.isPlaying
+                player.status === "readyToPlay"
             ) {
-                player.muted = false;
-                player.play();
+                if (!player.isPlaying) {
+                    player.muted = false;
+                    player.play();
+                }
             }
         });
 
-        const togglePause = () => {
-            setUserPaused(!userPaused);
-        };
+        const togglePause = useCallback(() => {
+            setUserPaused((prev) => !prev);
+        }, []);
 
-        // Show loading indicator when video is active but not ready to play
-        // This provides visual feedback during the first swipe when video is still loading
-        const isLoading = isActive && player.status !== "readyToPlay" && !userPaused;
+        const handleSeek = useCallback(
+            (p: number) => {
+                if (!isActive || !player) return;
+                const dur = player.duration;
+                if (dur > 0 && Number.isFinite(dur)) {
+                    const t = Math.max(0, Math.min(1, p)) * dur;
+                    player.seekTo(t);
+                    setProgress(p);
+                }
+            },
+            [isActive, player],
+        );
+
+        const duration = useMemo(
+            () => player?.duration ?? 0,
+            [player?.duration],
+        );
 
         return (
             <View style={[styles.container, { height: itemHeight }]}>
@@ -238,29 +296,12 @@ const VideoViewComponent = React.memo(
                 <TouchableWithoutFeedback onPress={togglePause}>
                     <View style={styles.touchArea} />
                 </TouchableWithoutFeedback>
-                {isLoading && (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color="#fff" />
-                    </View>
-                )}
                 <VideoOverlay
                     isVisible={isActive}
                     isPaused={userPaused}
                     progress={progress}
-                    duration={player?.duration ?? 0}
-                    onSeek={
-                        isActive && player
-                            ? (p: number) => {
-                                  const dur = player.duration;
-                                  if (dur > 0 && Number.isFinite(dur)) {
-                                      const t =
-                                          Math.max(0, Math.min(1, p)) * dur;
-                                      player.seekTo(t);
-                                      setProgress(p);
-                                  }
-                              }
-                            : undefined
-                    }
+                    duration={duration}
+                    onSeek={isActive && player ? handleSeek : undefined}
                 />
             </View>
         );
@@ -272,7 +313,7 @@ const VideoViewComponent = React.memo(
             prevProps.shouldPreload === nextProps.shouldPreload &&
             prevProps.itemHeight === nextProps.itemHeight
         );
-    }
+    },
 );
 
 const styles = StyleSheet.create({
@@ -290,16 +331,6 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-    },
-    loadingContainer: {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "rgba(0, 0, 0, 0.3)",
     },
 });
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
@@ -35,7 +35,6 @@ const VideoFeedList = () => {
     const currentIndexRef = useRef(0);
     const directionRef = useRef<Direction>("down");
     const isScrollingRef = useRef(false);
-    const rafPendingRef = useRef(false);
     const scrollStartTimestampRef = useRef<number | null>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
     const [measuredHeight, setMeasuredHeight] = useState<number | null>(
@@ -46,14 +45,18 @@ const VideoFeedList = () => {
         if (h > 0) setMeasuredHeight(h);
     }, []);
 
-    const itemHeight = (measuredHeight ?? FALLBACK_ITEM_HEIGHT) + ITEM_OVERLAP;
-    const listReady = measuredHeight !== null;
+    const itemHeight = useMemo(
+        () => (measuredHeight ?? FALLBACK_ITEM_HEIGHT) + ITEM_OVERLAP,
+        [measuredHeight],
+    );
+    const listReady = useMemo(() => measuredHeight !== null, [measuredHeight]);
     const listRef = useRef<LegendListRef | null>(null);
+
     const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 50,
-        waitForInteraction: false,
-        minimumViewTime: 0,
-        viewAreaCoveragePercentThreshold: 50,
+        itemVisiblePercentThreshold: 50, 
+        waitForInteraction: false, 
+        minimumViewTime: 0, 
+        viewAreaCoveragePercentThreshold: 50, 
     }).current;
 
     const handleVideoChange = useCallback(
@@ -72,14 +75,7 @@ const VideoFeedList = () => {
 
             directionRef.current = clampedIndex > prevIndex ? "down" : "up";
             currentIndexRef.current = clampedIndex;
-
-            if (!rafPendingRef.current) {
-                rafPendingRef.current = true;
-                requestAnimationFrame(() => {
-                    setRenderTrigger((t) => t + 1);
-                    rafPendingRef.current = false;
-                });
-            }
+            setRenderTrigger((t) => t + 1);
         },
         [videos.length],
     );
@@ -103,7 +99,7 @@ const VideoFeedList = () => {
 
             const shouldPreload =
                 isActive ||
-                Math.abs(distanceFromActive) <= 1 || // always keep neighbor preloaded
+                Math.abs(distanceFromActive) <= 1 ||
                 shouldPreloadAhead ||
                 shouldPreloadBehind;
 
@@ -175,9 +171,27 @@ const VideoFeedList = () => {
 
     const handleScrollEnd = useCallback(() => {
         isScrollingRef.current = false;
-        // Don't trigger render here - let viewability handle it naturally
-        // Additional render can cause video stutter/cut at scroll end
+        scrollStartTimestampRef.current = null;
     }, []);
+
+    const getFixedItemSize = useCallback(() => itemHeight, [itemHeight]);
+
+    const viewabilityConfigCallbackPairs = useMemo(
+        () => [
+            {
+                viewabilityConfig,
+                onViewableItemsChanged: handleVideoChange,
+            },
+        ],
+        [handleVideoChange],
+    );
+
+    const getItemType = useCallback(() => "video", []);
+
+    const drawDistance = useMemo(
+        () => itemHeight * DRAW_DISTANCE_MULTIPLIER,
+        [itemHeight],
+    );
 
     if (loading) {
         return (
@@ -214,20 +228,15 @@ const VideoFeedList = () => {
                     decelerationRate={DECELERATION_RATE}
                     scrollEventThrottle={SCROLL_EVENT_THROTTLE}
                     disableIntervalMomentum={true}
-                    viewabilityConfigCallbackPairs={[
-                        {
-                            viewabilityConfig,
-                            onViewableItemsChanged: handleVideoChange,
-                        },
-                    ]}
+                    viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
                     onScrollBeginDrag={handleScrollBeginDrag}
                     onScroll={handleScroll}
                     onMomentumScrollEnd={handleScrollEnd}
                     onScrollEndDrag={handleScrollEnd}
                     estimatedItemSize={itemHeight}
-                    getFixedItemSize={() => itemHeight}
-                    drawDistance={itemHeight * DRAW_DISTANCE_MULTIPLIER}
-                    getItemType={() => "video"}
+                    getFixedItemSize={getFixedItemSize}
+                    drawDistance={drawDistance}
+                    getItemType={getItemType}
                     bounces={false}
                     overScrollMode="never"
                     style={styles.list}
